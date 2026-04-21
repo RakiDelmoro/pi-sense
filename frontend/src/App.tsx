@@ -168,7 +168,18 @@ function StatusIndicator({ label, status }: { label: string; status: 'connected'
         <span className="status-dot-core" />
         <span className="status-dot-ring" />
       </span>
-      <span className="status-indicator-label">{label}</span>
+      <span className="status-indicator-label">
+        {label}
+        <svg className="ekg-line" viewBox="0 0 60 24" preserveAspectRatio="none">
+          <polyline
+            fill="none"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points="0,12 6,12 8,6 10,18 12,2 14,22 16,8 18,12 60,12"
+          />
+        </svg>
+      </span>
     </div>
   )
 }
@@ -190,10 +201,14 @@ function App() {
         <header className="header">
           <div className="header-top">
             <div className="logo-group">
-              <img src="/favicon.png" alt="PiSense" className="logo-icon" />
+              <div className="logo-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                  <polyline points="9 22 9 12 15 12 15 22" />
+                </svg>
+              </div>
               <div>
-                <h1 className="title">PiSense</h1>
-                <p className="subtitle">Smart Home Monitoring</p>
+                <h1 className="title">PiSense Home</h1>
               </div>
             </div>
             <div className="header-status-group">
