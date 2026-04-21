@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import './App.css'
+import { useMqttData } from './hooks/useMqttData'
 
 function NetworkBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -159,15 +160,25 @@ function FlowIndicator({ value, unit }: { value: number; unit: string }) {
   )
 }
 
-function StatusDot({ status }: { status: 'online' | 'offline' }) {
+function StatusIndicator({ label, status }: { label: string; status: 'connected' | 'disconnected' }) {
+  const isOnline = status === 'connected'
   return (
-    <span className={`status-dot ${status}`}>
-      <span className="status-dot-ring" />
-    </span>
+    <div className={`status-indicator ${isOnline ? 'online' : 'offline'}`}>
+      <span className="status-dot">
+        <span className="status-dot-core" />
+        <span className="status-dot-ring" />
+      </span>
+      <span className="status-indicator-label">{label}</span>
+    </div>
   )
 }
 
 function App() {
+  const { data, socketStatus, mqttStatus } = useMqttData()
+  const tank = data.waterTank ?? {}
+
+  const systemStatus = (socketStatus === 'connected' && mqttStatus === 'connected') ? 'connected' : 'disconnected'
+
   return (
     <div className="app">
       <NetworkBackground />
@@ -185,9 +196,8 @@ function App() {
                 <p className="subtitle">Smart Home Monitoring</p>
               </div>
             </div>
-            <div className="header-status">
-              <StatusDot status="online" />
-              <span className="status-text">System Online</span>
+            <div className="header-status-group">
+              <StatusIndicator label="System" status={systemStatus} />
             </div>
           </div>
         </header>
@@ -201,7 +211,7 @@ function App() {
                 </svg>
               </div>
               <h2>Water Tank</h2>
-              <Gauge value={50} max={100} label="Tank Level" unit="%" />
+              <Gauge value={tank.level ?? 0} max={100} label="Tank Level" unit="%" />
             </div>
             <div className="card">
               <div className="card-icon">
@@ -211,7 +221,7 @@ function App() {
                 </svg>
               </div>
               <h2>Water Volume</h2>
-              <Gauge value={250} max={500} label="Volume" unit="L" />
+              <Gauge value={tank.volume ?? 0} max={500} label="Volume" unit="L" />
             </div>
             <div className="card">
               <div className="card-icon">
@@ -220,7 +230,7 @@ function App() {
                 </svg>
               </div>
               <h2>Water Flow</h2>
-              <FlowIndicator value={12} unit="L/min" />
+              <FlowIndicator value={tank.flow ?? 0} unit="L/min" />
             </div>
           </section>
         </main>

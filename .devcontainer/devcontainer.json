@@ -14,10 +14,11 @@
 	// "features": {},
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
-	"forwardPorts": [6000],
+	"forwardPorts": [5173, 3001, 1883],
 
-	// Use 'postCreateCommand' to run commands after the container is created.
-	// "postCreateCommand": "yarn install",
+	"runArgs": ["--network=host"],
+
+	"postCreateCommand": "npm install",
 
 	// Configure tool-specific properties.
 	// "customizations": {},
