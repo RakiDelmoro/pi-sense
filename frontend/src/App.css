@@ -354,10 +354,8 @@
 
 .main {
   flex: 1;
-  padding: 48px 40px 80px;
-  max-width: 960px;
+  padding: 32px 24px;
   width: 100%;
-  margin: 0 auto;
   box-sizing: border-box;
   position: relative;
 }
@@ -369,7 +367,7 @@
 .sensor-canvas {
   position: relative;
   width: 100%;
-  min-height: 60vh;
+  min-height: 80vh;
 }
 
 .sensor-card {
@@ -404,7 +402,7 @@
 
 @media (max-width: 768px) {
   .header { padding: 20px 20px; }
-  .main { padding: 32px 20px 60px; }
+  .main { padding: 20px 16px; }
   .header-status-group { display: none; }
 }
 
