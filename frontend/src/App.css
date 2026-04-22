@@ -294,7 +294,7 @@
 
 .main {
   flex: 1;
-  padding: 150px;
+  padding: 0;
   width: 100%;
   box-sizing: border-box;
   position: relative;
@@ -359,13 +359,8 @@
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   overflow: visible;
-  transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.4s ease, border-color 0.4s ease;
-  animation: fadeSlideUp 0.6s ease-out both;
+  transition: box-shadow 0.4s ease, border-color 0.4s ease;
 }
-
-.card:nth-child(1) { animation-delay: 0.15s; }
-.card:nth-child(2) { animation-delay: 0.3s; }
-.card:nth-child(3) { animation-delay: 0.45s; }
 
 .card::before {
   content: '';
@@ -392,7 +387,6 @@
 }
 
 .card:hover {
-  transform: translateY(-8px) scale(1.01);
   box-shadow:
     0 0 0 1px rgba(56, 189, 248, 0.2),
     0 16px 48px rgba(56, 189, 248, 0.08),
