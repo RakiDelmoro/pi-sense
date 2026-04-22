@@ -16,12 +16,18 @@ export interface FieldConfig {
   settings: SensorSettings
 }
 
+export interface Position {
+  x: number
+  y: number
+}
+
 export interface SensorConfig {
   id: string
   label: string
   topic: string
   payloadType: 'plain' | 'json'
   fields: FieldConfig[]
+  position?: Position
 }
 
 // Legacy interface for migration
@@ -34,6 +40,7 @@ interface LegacySensorConfig {
   widgetType?: 'gauge' | 'flow' | 'numeric' | 'status'
   settings?: SensorSettings
   fields?: FieldConfig[]
+  position?: Position
 }
 
 const DATA_FILE = resolve('backend/data/sensors.json')
@@ -57,6 +64,7 @@ function migrateLegacy(sensors: LegacySensorConfig[]): SensorConfig[] {
       topic: s.topic,
       payloadType: s.payloadType,
       fields: [field],
+      position: s.position,
     }
   })
 }

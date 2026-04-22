@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import './App.css'
 import { useSensors } from './hooks/useSensors'
 import { WidgetRenderer } from './components/WidgetRenderer'
 import { AddSensorModal } from './components/AddSensorModal'
-import { deleteSensor } from './api/sensors'
+import { deleteSensor, updateSensorPosition } from './api/sensors'
 import type { SensorConfig, FieldConfig } from './api/sensors'
 import { NetworkBackground } from './components/NetworkBackground'
 import { StatusIndicator } from './components/widgets/StatusIndicator'
@@ -55,13 +55,39 @@ function SensorCard({
   sensor,
   fieldValues,
   onDelete,
+  onDragStart,
+  isDragging,
 }: {
   sensor: SensorConfig
   fieldValues: Record<string, number>
   onDelete: (id: string) => void
+  onDragStart: (e: React.MouseEvent | React.TouchEvent, id: string) => void
+  isDragging: boolean
 }) {
+  const pos = sensor.position ?? { x: 50, y: 50 }
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('.sensor-delete')) return
+    onDragStart(e, sensor.id)
+  }
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if ((e.target as HTMLElement).closest('.sensor-delete')) return
+    onDragStart(e, sensor.id)
+  }
+
   return (
-    <div className="card sensor-card">
+    <div
+      className={`card sensor-card ${isDragging ? 'dragging' : ''}`}
+      style={{
+        position: 'absolute',
+        left: `${pos.x}%`,
+        top: `${pos.y}%`,
+        transform: 'translate(-50%, -50%)',
+      }}
+      onMouseDown={handleMouseDown}
+      onTouchStart={handleTouchStart}
+    >
       <button
         className="sensor-delete"
         onClick={() => onDelete(sensor.id)}
@@ -87,6 +113,9 @@ function SensorCard({
 function App() {
   const { sensors, values, socketStatus, mqttStatus, loading, refreshSensors } = useSensors()
   const [showModal, setShowModal] = useState(false)
+  const [dragging, setDragging] = useState<string | null>(null)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const canvasRef = useRef<HTMLElement>(null)
 
   const systemStatus = socketStatus === 'connected' && mqttStatus === 'connected' ? 'connected' : 'disconnected'
   const isEmpty = !loading && sensors.length === 0
@@ -101,6 +130,61 @@ function App() {
       alert('Failed to delete sensor')
     }
   }
+
+  const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent, id: string) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+
+    const rect = canvas.getBoundingClientRect()
+    const x = ((clientX - rect.left) / rect.width) * 100
+    const y = ((clientY - rect.top) / rect.height) * 100
+
+    const sensor = sensors.find((s) => s.id === id)
+    const pos = sensor?.position ?? { x: 50, y: 50 }
+
+    setDragOffset({ x: x - pos.x, y: y - pos.y })
+    setDragging(id)
+  }, [sensors])
+
+  const handleDragMove = useCallback((e: MouseEvent | TouchEvent) => {
+    if (!dragging || !canvasRef.current) return
+
+    const canvas = canvasRef.current
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+
+    const rect = canvas.getBoundingClientRect()
+    let x = ((clientX - rect.left) / rect.width) * 100 - dragOffset.x
+    let y = ((clientY - rect.top) / rect.height) * 100 - dragOffset.y
+
+    x = Math.max(5, Math.min(95, x))
+    y = Math.max(5, Math.min(95, y))
+
+    updateSensorPosition(dragging, { x, y }).catch((err) => {
+      console.error('Failed to update position:', err)
+    })
+  }, [dragging, dragOffset])
+
+  const handleDragEnd = useCallback(() => {
+    setDragging(null)
+  }, [])
+
+  useEffect(() => {
+    if (!dragging) return
+    window.addEventListener('mousemove', handleDragMove)
+    window.addEventListener('mouseup', handleDragEnd)
+    window.addEventListener('touchmove', handleDragMove)
+    window.addEventListener('touchend', handleDragEnd)
+    return () => {
+      window.removeEventListener('mousemove', handleDragMove)
+      window.removeEventListener('mouseup', handleDragEnd)
+      window.removeEventListener('touchmove', handleDragMove)
+      window.removeEventListener('touchend', handleDragEnd)
+    }
+  }, [dragging, handleDragMove, handleDragEnd])
 
   return (
     <div className="app">
@@ -149,7 +233,10 @@ function App() {
           </div>
         </header>
 
-        <main className="main">
+        <main
+          className={`main ${dragging ? 'main--dragging' : ''}`}
+          ref={canvasRef as React.RefObject<HTMLElement>}
+        >
           {loading ? (
             <div className="empty-state">
               <div className="loading-spinner" />
@@ -166,18 +253,18 @@ function App() {
               </button>
             </div>
           ) : (
-            <>
-              <section className="status-grid">
-                {sensors.map((sensor) => (
-                  <SensorCard
-                    key={sensor.id}
-                    sensor={sensor}
-                    fieldValues={values[sensor.id] ?? {}}
-                    onDelete={handleDelete}
-                  />
-                ))}
-              </section>
-            </>
+            <section className="sensor-canvas">
+              {sensors.map((sensor) => (
+                <SensorCard
+                  key={sensor.id}
+                  sensor={sensor}
+                  fieldValues={values[sensor.id] ?? {}}
+                  onDelete={handleDelete}
+                  onDragStart={handleDragStart}
+                  isDragging={dragging === sensor.id}
+                />
+              ))}
+            </section>
           )}
         </main>
 

@@ -8,7 +8,7 @@ import {
   deleteSensor,
 } from '../store/sensorStore.js'
 import type { MqttManager } from '../mqtt/mqttManager.js'
-import type { FieldConfig, SensorConfig } from '../store/sensorStore.js'
+import type { FieldConfig, SensorConfig, Position } from '../store/sensorStore.js'
 
 function validateFields(payloadType: string, fields: unknown[]): { valid: boolean; error?: string; normalized?: FieldConfig[] } {
   if (!Array.isArray(fields) || fields.length === 0) {
@@ -81,6 +81,7 @@ export function createSensorRoutes(mqttManager: MqttManager): Router {
       topic,
       payloadType,
       fields: validation.normalized!,
+      position: { x: 50, y: 50 },
     })
 
     mqttManager.subscribeTopic(sensor.topic)
@@ -105,6 +106,12 @@ export function createSensorRoutes(mqttManager: MqttManager): Router {
       }
       updates.fields = validation.normalized
     }
+    if (req.body.position !== undefined) {
+      const pos = req.body.position as Position
+      if (typeof pos.x === 'number' && typeof pos.y === 'number') {
+        updates.position = { x: pos.x, y: pos.y }
+      }
+    }
 
     const updated = updateSensor(req.params.id, updates)
     if (!updated) return res.status(404).json({ error: 'Sensor not found' })
@@ -114,6 +121,20 @@ export function createSensorRoutes(mqttManager: MqttManager): Router {
       mqttManager.subscribeTopic(updated.topic)
     }
 
+    res.json(updated)
+  })
+
+  router.patch('/:id/position', (req, res) => {
+    const { x, y } = req.body as Partial<Position>
+    const existing = getSensorById(req.params.id)
+    if (!existing) return res.status(404).json({ error: 'Sensor not found' })
+
+    if (typeof x !== 'number' || typeof y !== 'number') {
+      return res.status(400).json({ error: 'Position requires numeric x and y' })
+    }
+
+    const updated = updateSensor(req.params.id, { position: { x, y } })
+    if (!updated) return res.status(404).json({ error: 'Sensor not found' })
     res.json(updated)
   })
 
