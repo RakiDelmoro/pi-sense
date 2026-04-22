@@ -158,12 +158,6 @@ function App() {
             </div>
           ) : isEmpty ? (
             <div className="empty-state">
-              <div className="empty-icon glow-pulse">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2a10 10 0 100 20 10 10 0 000-20z" />
-                  <path d="M12 8v8M8 12h8" />
-                </svg>
-              </div>
               <button className="btn btn-primary add-sensor-btn add-sensor-btn--hero" onClick={() => setShowModal(true)}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19" />
