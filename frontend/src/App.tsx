@@ -37,13 +37,7 @@ function TypingText({ text, speed = 60 }: { text: string; speed?: number }) {
   )
 }
 
-function FieldWidget({
-  field,
-  value,
-}: {
-  field: FieldConfig
-  value: number
-}) {
+function FieldWidget({ field, value }: { field: FieldConfig; value: number }) {
   return (
     <div className="field-widget">
       <WidgetRenderer field={field} value={value} />
@@ -57,14 +51,18 @@ function SensorCard({
   onDelete,
   onDragStart,
   isDragging,
-  position,
+  pixelX,
+  pixelY,
+  registerCard,
 }: {
   sensor: SensorConfig
   fieldValues: Record<string, number>
   onDelete: (id: string) => void
   onDragStart: (e: React.MouseEvent | React.TouchEvent, id: string) => void
   isDragging: boolean
-  position: Position
+  pixelX: number
+  pixelY: number
+  registerCard: (id: string, el: HTMLDivElement | null) => void
 }) {
   const handleMouseDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.sensor-delete')) return
@@ -78,12 +76,13 @@ function SensorCard({
 
   return (
     <div
+      ref={(el) => registerCard(sensor.id, el)}
       className={`card sensor-card ${isDragging ? 'dragging' : ''}`}
       style={{
         position: 'absolute',
-        left: `${position.x}%`,
-        top: `${position.y}%`,
-        transform: 'translate(-50%, -50%)',
+        left: 0,
+        top: 0,
+        transform: `translate(${pixelX}px, ${pixelY}px)`,
       }}
       onMouseDown={handleMouseDown}
       onTouchStart={handleTouchStart}
@@ -110,17 +109,154 @@ function SensorCard({
   )
 }
 
+interface DragState {
+  id: string
+  offsetX: number
+  offsetY: number
+}
+
+function pctToPixel(pct: Position, canvasW: number, canvasH: number, cardW: number, cardH: number) {
+  const maxX = Math.max(0, canvasW - cardW)
+  const maxY = Math.max(0, canvasH - cardH)
+  return {
+    x: (pct.x / 100) * maxX,
+    y: (pct.y / 100) * maxY,
+  }
+}
+
+function pixelToPct(pixelX: number, pixelY: number, canvasW: number, canvasH: number, cardW: number, cardH: number): Position {
+  const maxX = Math.max(1, canvasW - cardW)
+  const maxY = Math.max(1, canvasH - cardH)
+  return {
+    x: Math.max(0, Math.min(100, (pixelX / maxX) * 100)),
+    y: Math.max(0, Math.min(100, (pixelY / maxY) * 100)),
+  }
+}
+
 function App() {
   const { sensors, values, socketStatus, mqttStatus, loading, refreshSensors } = useSensors()
   const [showModal, setShowModal] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
-  const [localPositions, setLocalPositions] = useState<Record<string, Position>>({})
-  const canvasRef = useRef<HTMLElement>(null)
 
-  const getSensorPosition = useCallback((sensor: SensorConfig): Position => {
-    return localPositions[sensor.id] ?? sensor.position ?? { x: 50, y: 50 }
-  }, [localPositions])
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const cardElements = useRef<Map<string, HTMLDivElement>>(new Map())
+  const dragState = useRef<DragState | null>(null)
+  const sensorsRef = useRef(sensors)
+  sensorsRef.current = sensors
+
+  const positionAllCards = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const canvasRect = canvas.getBoundingClientRect()
+
+    sensorsRef.current.forEach((sensor) => {
+      const el = cardElements.current.get(sensor.id)
+      if (!el) return
+      const cardRect = el.getBoundingClientRect()
+      const pct = sensor.position ?? { x: 50, y: 50 }
+      const pixel = pctToPixel(pct, canvasRect.width, canvasRect.height, cardRect.width, cardRect.height)
+      el.style.transform = `translate(${pixel.x}px, ${pixel.y}px)`
+    })
+  }, [])
+
+  const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent, id: string) => {
+    const el = cardElements.current.get(id)
+    const canvas = canvasRef.current
+    if (!el || !canvas) return
+
+    const style = window.getComputedStyle(el)
+    const matrix = new DOMMatrix(style.transform)
+    const currentX = matrix.m41
+    const currentY = matrix.m42
+
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+
+    dragState.current = {
+      id,
+      offsetX: clientX - currentX,
+      offsetY: clientY - currentY,
+    }
+    setDragging(id)
+  }, [])
+
+  const handleDragMove = useCallback((e: MouseEvent | TouchEvent) => {
+    if (!dragState.current) return
+    const { id, offsetX, offsetY } = dragState.current
+
+    const el = cardElements.current.get(id)
+    const canvas = canvasRef.current
+    if (!el || !canvas) return
+
+    const canvasRect = canvas.getBoundingClientRect()
+    const cardRect = el.getBoundingClientRect()
+
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+
+    let x = clientX - canvasRect.left - offsetX
+    let y = clientY - canvasRect.top - offsetY
+
+    const maxX = Math.max(0, canvasRect.width - cardRect.width)
+    const maxY = Math.max(0, canvasRect.height - cardRect.height)
+
+    x = Math.max(0, Math.min(maxX, x))
+    y = Math.max(0, Math.min(maxY, y))
+
+    el.style.transform = `translate(${x}px, ${y}px)`
+  }, [])
+
+  const handleDragEnd = useCallback(() => {
+    if (!dragState.current) return
+    const { id } = dragState.current
+
+    const el = cardElements.current.get(id)
+    const canvas = canvasRef.current
+    if (!el || !canvas) return
+
+    const style = window.getComputedStyle(el)
+    const matrix = new DOMMatrix(style.transform)
+    const pixelX = matrix.m41
+    const pixelY = matrix.m42
+
+    const canvasRect = canvas.getBoundingClientRect()
+    const cardRect = el.getBoundingClientRect()
+
+    const pct = pixelToPct(pixelX, pixelY, canvasRect.width, canvasRect.height, cardRect.width, cardRect.height)
+
+    updateSensorPosition(id, pct).catch((err) => {
+      console.error('Failed to save position:', err)
+    })
+
+    dragState.current = null
+    setDragging(null)
+  }, [])
+
+  useEffect(() => {
+    if (!dragState.current) return
+    window.addEventListener('mousemove', handleDragMove)
+    window.addEventListener('mouseup', handleDragEnd)
+    window.addEventListener('touchmove', handleDragMove, { passive: false })
+    window.addEventListener('touchend', handleDragEnd)
+    return () => {
+      window.removeEventListener('mousemove', handleDragMove)
+      window.removeEventListener('mouseup', handleDragEnd)
+      window.removeEventListener('touchmove', handleDragMove)
+      window.removeEventListener('touchend', handleDragEnd)
+    }
+  }, [handleDragMove, handleDragEnd])
+
+  useEffect(() => {
+    requestAnimationFrame(positionAllCards)
+  }, [sensors, positionAllCards])
+
+  useEffect(() => {
+    const handleResize = () => {
+      requestAnimationFrame(positionAllCards)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [positionAllCards])
 
   const systemStatus = socketStatus === 'connected' && mqttStatus === 'connected' ? 'connected' : 'disconnected'
   const isEmpty = !loading && sensors.length === 0
@@ -135,70 +271,6 @@ function App() {
       alert('Failed to delete sensor')
     }
   }
-
-  const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent, id: string) => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
-
-    const rect = canvas.getBoundingClientRect()
-    const x = ((clientX - rect.left) / rect.width) * 100
-    const y = ((clientY - rect.top) / rect.height) * 100
-
-    const sensor = sensors.find((s) => s.id === id)
-    const pos = sensor ? getSensorPosition(sensor) : { x: 50, y: 50 }
-
-    setDragOffset({ x: x - pos.x, y: y - pos.y })
-    setDragging(id)
-  }, [sensors, getSensorPosition])
-
-  const handleDragMove = useCallback((e: MouseEvent | TouchEvent) => {
-    if (!dragging || !canvasRef.current) return
-
-    const canvas = canvasRef.current
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
-
-    const rect = canvas.getBoundingClientRect()
-    let x = ((clientX - rect.left) / rect.width) * 100 - dragOffset.x
-    let y = ((clientY - rect.top) / rect.height) * 100 - dragOffset.y
-
-    x = Math.max(5, Math.min(95, x))
-    y = Math.max(5, Math.min(95, y))
-
-    setLocalPositions((prev) => ({
-      ...prev,
-      [dragging]: { x, y },
-    }))
-  }, [dragging, dragOffset])
-
-  const handleDragEnd = useCallback(() => {
-    if (!dragging) return
-
-    const finalPos = localPositions[dragging]
-    if (finalPos) {
-      updateSensorPosition(dragging, finalPos).catch((err) => {
-        console.error('Failed to save position:', err)
-      })
-    }
-    setDragging(null)
-  }, [dragging, localPositions])
-
-  useEffect(() => {
-    if (!dragging) return
-    window.addEventListener('mousemove', handleDragMove)
-    window.addEventListener('mouseup', handleDragEnd)
-    window.addEventListener('touchmove', handleDragMove)
-    window.addEventListener('touchend', handleDragEnd)
-    return () => {
-      window.removeEventListener('mousemove', handleDragMove)
-      window.removeEventListener('mouseup', handleDragEnd)
-      window.removeEventListener('touchmove', handleDragMove)
-      window.removeEventListener('touchend', handleDragEnd)
-    }
-  }, [dragging, handleDragMove, handleDragEnd])
 
   return (
     <div className="app">
@@ -249,7 +321,7 @@ function App() {
 
         <main
           className={`main ${dragging ? 'main--dragging' : ''}`}
-          ref={canvasRef as React.RefObject<HTMLElement>}
+          ref={canvasRef}
         >
           {loading ? (
             <div className="empty-state">
@@ -268,17 +340,36 @@ function App() {
             </div>
           ) : (
             <section className="sensor-canvas">
-              {sensors.map((sensor) => (
-                <SensorCard
-                  key={sensor.id}
-                  sensor={sensor}
-                  fieldValues={values[sensor.id] ?? {}}
-                  onDelete={handleDelete}
-                  onDragStart={handleDragStart}
-                  isDragging={dragging === sensor.id}
-                  position={getSensorPosition(sensor)}
-                />
-              ))}
+              {sensors.map((sensor) => {
+                const pct = sensor.position ?? { x: 50, y: 50 }
+                const canvas = canvasRef.current
+                const el = cardElements.current.get(sensor.id)
+                let pixelX = 0
+                let pixelY = 0
+                if (canvas && el) {
+                  const cRect = canvas.getBoundingClientRect()
+                  const cardRect = el.getBoundingClientRect()
+                  const p = pctToPixel(pct, cRect.width, cRect.height, cardRect.width, cardRect.height)
+                  pixelX = p.x
+                  pixelY = p.y
+                }
+                return (
+                  <SensorCard
+                    key={sensor.id}
+                    sensor={sensor}
+                    fieldValues={values[sensor.id] ?? {}}
+                    onDelete={handleDelete}
+                    onDragStart={handleDragStart}
+                    isDragging={dragging === sensor.id}
+                    pixelX={pixelX}
+                    pixelY={pixelY}
+                    registerCard={(id, el) => {
+                      if (el) cardElements.current.set(id, el)
+                      else cardElements.current.delete(id)
+                    }}
+                  />
+                )
+              })}
             </section>
           )}
         </main>
