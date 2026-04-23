@@ -5,6 +5,7 @@ import type { FieldConfig } from '../api/sensors.ts'
 interface AddSensorModalProps {
   onClose: () => void
   onAdded: () => void
+  dockNewSensor?: boolean
 }
 
 const WIDGET_TYPES: { value: FieldConfig['widgetType']; label: string }[] = [
@@ -24,7 +25,7 @@ function makeDefaultField(): FieldConfig {
   }
 }
 
-export function AddSensorModal({ onClose, onAdded }: AddSensorModalProps) {
+export function AddSensorModal({ onClose, onAdded, dockNewSensor }: AddSensorModalProps) {
   const [label, setLabel] = useState('')
   const [topic, setTopic] = useState('')
   const [payloadType, setPayloadType] = useState<'plain' | 'json'>('plain')
@@ -98,6 +99,8 @@ export function AddSensorModal({ onClose, onAdded }: AddSensorModalProps) {
           jsonKey: payloadType === 'json' ? f.jsonKey.trim() : '',
           label: f.label.trim(),
         })),
+        placed: dockNewSensor ? false : true,
+        position: dockNewSensor ? { x: 50, y: 0 } : { x: 50, y: 50 },
       })
       onAdded()
       onClose()

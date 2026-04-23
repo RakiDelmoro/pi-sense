@@ -22,17 +22,6 @@ export function useSensors() {
   const [loading, setLoading] = useState(true)
   const socketRef = useRef<Socket | null>(null)
 
-  const loadSensors = useCallback(async () => {
-    try {
-      const data = await fetchSensors()
-      setSensors(data)
-    } catch (err) {
-      console.error('Failed to load sensors:', err)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
   const connectSocket = useCallback(() => {
     if (socketRef.current?.connected) return
 
@@ -66,19 +55,37 @@ export function useSensors() {
   }, [])
 
   useEffect(() => {
-    loadSensors()
+    let cancelled = false
+
+    async function init() {
+      try {
+        const data = await fetchSensors()
+        if (!cancelled) setSensors(data)
+      } catch (err) {
+        console.error('Failed to load sensors:', err)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    init()
     connectSocket()
 
     return () => {
+      cancelled = true
       socketRef.current?.disconnect()
       socketRef.current = null
     }
-  }, [loadSensors, connectSocket])
+  }, [connectSocket])
 
   const refreshSensors = useCallback(async () => {
-    setLoading(true)
-    await loadSensors()
-  }, [loadSensors])
+    try {
+      const data = await fetchSensors()
+      setSensors(data)
+    } catch (err) {
+      console.error('Failed to load sensors:', err)
+    }
+  }, [])
 
   return { sensors, values, socketStatus, mqttStatus, loading, refreshSensors }
 }

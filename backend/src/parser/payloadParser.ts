@@ -1,4 +1,4 @@
-import type { SensorConfig, FieldConfig } from '../store/sensorStore.js'
+import type { SensorConfig } from '../store/sensorStore.js'
 
 export function parsePayload(sensor: SensorConfig, rawMessage: string): Record<string, number | null> {
   const trimmed = rawMessage.trim()

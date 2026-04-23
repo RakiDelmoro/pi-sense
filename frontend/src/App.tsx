@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import './App.css'
 import { useSensors } from './hooks/useSensors'
 import { WidgetRenderer } from './components/WidgetRenderer'
 import { AddSensorModal } from './components/AddSensorModal'
-import { deleteSensor, updateSensorPosition } from './api/sensors'
+import { deleteSensor, updateSensorPosition, updateSensor } from './api/sensors'
 import type { SensorConfig, FieldConfig, Position } from './api/sensors'
 import { NetworkBackground } from './components/NetworkBackground'
 import { StatusIndicator } from './components/widgets/StatusIndicator'
@@ -95,6 +95,43 @@ function SensorCard({
   )
 }
 
+function DockedSensorBar({
+  sensor,
+  onDragStart,
+  onDelete,
+}: {
+  sensor: SensorConfig
+  onDragStart: (e: React.MouseEvent | React.TouchEvent, id: string) => void
+  onDelete: (id: string) => void
+}) {
+  return (
+    <div
+      data-sensor-id={sensor.id}
+      className="docked-sensor-bar"
+      onMouseDown={(e) => {
+        if ((e.target as HTMLElement).closest('.sensor-delete')) return
+        e.preventDefault()
+        onDragStart(e, sensor.id)
+      }}
+      onTouchStart={(e) => {
+        if ((e.target as HTMLElement).closest('.sensor-delete')) return
+        onDragStart(e, sensor.id)
+      }}
+    >
+      <button
+        className="sensor-delete"
+        onClick={() => onDelete(sensor.id)}
+        aria-label="Delete sensor"
+        title="Delete sensor"
+      >
+        &times;
+      </button>
+      <span className="docked-sensor-label">{sensor.label}</span>
+      <span className="docked-sensor-hint">Drag to dashboard</span>
+    </div>
+  )
+}
+
 const GAP = 20
 
 function pctToPixel(pct: Position, canvasW: number, canvasH: number, cardW: number, cardH: number) {
@@ -115,8 +152,26 @@ function pixelToPct(pixelX: number, pixelY: number, canvasW: number, canvasH: nu
   }
 }
 
+function rectsOverlap(a: DOMRect, b: DOMRect, padding = 8): boolean {
+  return (
+    a.left < b.right + padding &&
+    a.right > b.left - padding &&
+    a.top < b.bottom + padding &&
+    a.bottom > b.top - padding
+  )
+}
+
 interface DragState {
   id: string
+  startX: number
+  startY: number
+  startMouseX: number
+  startMouseY: number
+}
+
+interface GhostDragState {
+  sensor: SensorConfig
+  fieldValues: Record<string, number>
   startX: number
   startY: number
   startMouseX: number
@@ -127,27 +182,34 @@ function App() {
   const { sensors, values, socketStatus, mqttStatus, loading, refreshSensors } = useSensors()
   const [showModal, setShowModal] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
+  const [ghostSensor, setGhostSensor] = useState<SensorConfig | null>(null)
 
   const canvasRef = useRef<HTMLDivElement>(null)
+  const dockRef = useRef<HTMLDivElement>(null)
+  const ghostRef = useRef<HTMLDivElement>(null)
   const dragState = useRef<DragState | null>(null)
+  const ghostDragState = useRef<GhostDragState | null>(null)
   const positionedRef = useRef<Set<string>>(new Set())
 
-  // Position all cards (initial or after resize)
-  const positionCards = () => {
+  const placedSensors = sensors.filter((s) => s.placed !== false)
+  const dockedSensors = sensors.filter((s) => s.placed === false)
+
+  // Position any newly placed cards that haven't been positioned yet
+  const positionCards = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const canvasRect = canvas.getBoundingClientRect()
-
     const placed: { x: number; y: number; w: number; h: number }[] = []
 
-    sensors.forEach((sensor) => {
-      // Find the card element by data-id attribute
+    placedSensors.forEach((sensor) => {
+      if (positionedRef.current.has(sensor.id)) return
+
       const el = canvas.querySelector(`[data-sensor-id="${sensor.id}"]`) as HTMLElement | null
       if (!el) return
 
       const cardRect = el.getBoundingClientRect()
       const pct = sensor.position ?? { x: 50, y: 50 }
-      let pixel = pctToPixel(pct, canvasRect.width, canvasRect.height, cardRect.width, cardRect.height)
+      const pixel = pctToPixel(pct, canvasRect.width, canvasRect.height, cardRect.width, cardRect.height)
 
       // Overlap nudge
       let attempts = 0
@@ -172,26 +234,37 @@ function App() {
       positionedRef.current.add(sensor.id)
       placed.push({ x: pixel.x, y: pixel.y, w: cardRect.width, h: cardRect.height })
     })
-  }
+  }, [placedSensors])
 
-  // Initial positioning
+  const positionCardsRef = useRef(positionCards)
   useEffect(() => {
-    if (sensors.length > 0 && positionedRef.current.size === 0) {
+    positionCardsRef.current = positionCards
+  })
+
+  // Clean up positionedRef and position new cards when placed sensors change
+  useEffect(() => {
+    const placedIds = new Set(placedSensors.map((s) => s.id))
+    for (const id of Array.from(positionedRef.current)) {
+      if (!placedIds.has(id)) {
+        positionedRef.current.delete(id)
+      }
+    }
+    if (placedSensors.length > 0) {
       requestAnimationFrame(positionCards)
     }
-  }, [sensors])
+  }, [placedSensors, positionCards])
 
-  // Resize
+  // Reposition everything on resize
   useEffect(() => {
     const onResize = () => {
       positionedRef.current.clear()
-      requestAnimationFrame(positionCards)
+      requestAnimationFrame(() => positionCardsRef.current())
     }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  // Drag handlers
+  // ── Placed card drag handlers ──
   const handleDragStart = (e: React.MouseEvent | React.TouchEvent, id: string) => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -199,15 +272,13 @@ function App() {
     const el = canvas.querySelector(`[data-sensor-id="${id}"]`) as HTMLElement | null
     if (!el) return
 
-    // Read current position from DOM
     const style = window.getComputedStyle(el)
     const matrix = new DOMMatrix(style.transform)
     let startX = matrix.m41
     let startY = matrix.m42
 
-    // Fallback if no transform yet
     if (startX === 0 && startY === 0) {
-      const sensor = sensors.find((s) => s.id === id)
+      const sensor = placedSensors.find((s) => s.id === id)
       if (sensor) {
         const canvasRect = canvas.getBoundingClientRect()
         const cardRect = el.getBoundingClientRect()
@@ -226,7 +297,7 @@ function App() {
     setDragging(id)
   }
 
-  const handleDragMove = (e: MouseEvent | TouchEvent) => {
+  const handleDragMove = useCallback((e: MouseEvent | TouchEvent) => {
     if (!dragState.current) return
     const { id, startX, startY, startMouseX, startMouseY } = dragState.current
 
@@ -256,9 +327,9 @@ function App() {
     y = Math.max(minY, Math.min(maxY, y))
 
     el.style.transform = `translate(${x}px, ${y}px)`
-  }
+  }, [])
 
-  const handleDragEnd = () => {
+  const handleDragEnd = useCallback(() => {
     if (!dragState.current) return
     const { id } = dragState.current
 
@@ -275,33 +346,126 @@ function App() {
     const canvasRect = canvas.getBoundingClientRect()
     const cardRect = el.getBoundingClientRect()
 
-    const pct = pixelToPct(currentX, currentY, canvasRect.width, canvasRect.height, cardRect.width, cardRect.height)
+    const dockRect = dockRef.current?.getBoundingClientRect()
 
-    updateSensorPosition(id, pct).catch((err) => {
-      console.error('Failed to save position:', err)
-    })
+    // If dropped overlapping dock area, unplace the sensor
+    if (dockRect && rectsOverlap(cardRect, dockRect)) {
+      updateSensor(id, { placed: false, position: { x: 50, y: 0 } })
+        .then(() => refreshSensors())
+        .catch((err) => console.error('Failed to unplace sensor:', err))
+    } else {
+      const pct = pixelToPct(currentX, currentY, canvasRect.width, canvasRect.height, cardRect.width, cardRect.height)
+      updateSensorPosition(id, pct).catch((err) => {
+        console.error('Failed to save position:', err)
+      })
+    }
 
     dragState.current = null
     setDragging(null)
+  }, [refreshSensors])
+
+  // ── Dock ghost drag handlers ──
+  const handleDockDragStart = (e: React.MouseEvent | React.TouchEvent, id: string) => {
+    const sensor = dockedSensors.find((s) => s.id === id)
+    if (!sensor) return
+
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+
+    // Estimate ghost size (will be measured after render)
+    const startX = clientX - 110
+    const startY = clientY - 30
+
+    ghostDragState.current = {
+      sensor,
+      fieldValues: values[sensor.id] ?? {},
+      startX,
+      startY,
+      startMouseX: clientX,
+      startMouseY: clientY,
+    }
+
+    setGhostSensor(sensor)
+    setDragging(id)
+
+    requestAnimationFrame(() => {
+      if (ghostRef.current) {
+        ghostRef.current.style.transform = `translate(${startX}px, ${startY}px)`
+      }
+    })
   }
 
-  // Attach/detach global mouse/touch listeners based on dragging state
+  const handleGhostMove = useCallback((e: MouseEvent | TouchEvent) => {
+    if (!ghostDragState.current || !ghostRef.current) return
+
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+
+    const dx = clientX - ghostDragState.current.startMouseX
+    const dy = clientY - ghostDragState.current.startMouseY
+
+    const x = ghostDragState.current.startX + dx
+    const y = ghostDragState.current.startY + dy
+
+    ghostRef.current.style.transform = `translate(${x}px, ${y}px)`
+  }, [])
+
+  const handleGhostEnd = useCallback(() => {
+    if (!ghostDragState.current) return
+    const { sensor } = ghostDragState.current
+
+    const ghostEl = ghostRef.current
+    const dockRect = dockRef.current?.getBoundingClientRect()
+
+    if (ghostEl && dockRect) {
+      const ghostRect = ghostEl.getBoundingClientRect()
+
+      // If dropped outside dock, place on canvas
+      if (!rectsOverlap(ghostRect, dockRect)) {
+        const canvas = canvasRef.current
+        if (canvas) {
+          const canvasRect = canvas.getBoundingClientRect()
+          const relativeX = ghostRect.left - canvasRect.left
+          const relativeY = ghostRect.top - canvasRect.top
+          const pct = pixelToPct(relativeX, relativeY, canvasRect.width, canvasRect.height, ghostRect.width, ghostRect.height)
+          updateSensor(sensor.id, { placed: true, position: pct })
+            .then(() => refreshSensors())
+            .catch((err) => console.error('Failed to place sensor:', err))
+        }
+      }
+    }
+
+    ghostDragState.current = null
+    setGhostSensor(null)
+    setDragging(null)
+  }, [refreshSensors])
+
+  // Attach global listeners based on dragging state
   useEffect(() => {
     if (!dragging) return
     window.addEventListener('mousemove', handleDragMove)
+    window.addEventListener('mousemove', handleGhostMove)
     window.addEventListener('mouseup', handleDragEnd)
+    window.addEventListener('mouseup', handleGhostEnd)
     window.addEventListener('touchmove', handleDragMove, { passive: false })
+    window.addEventListener('touchmove', handleGhostMove, { passive: false })
     window.addEventListener('touchend', handleDragEnd)
+    window.addEventListener('touchend', handleGhostEnd)
     return () => {
       window.removeEventListener('mousemove', handleDragMove)
+      window.removeEventListener('mousemove', handleGhostMove)
       window.removeEventListener('mouseup', handleDragEnd)
+      window.removeEventListener('mouseup', handleGhostEnd)
       window.removeEventListener('touchmove', handleDragMove)
+      window.removeEventListener('touchmove', handleGhostMove)
       window.removeEventListener('touchend', handleDragEnd)
+      window.removeEventListener('touchend', handleGhostEnd)
     }
-  }, [dragging])
+  }, [dragging, handleDragMove, handleGhostMove, handleDragEnd, handleGhostEnd])
 
   const systemStatus = socketStatus === 'connected' && mqttStatus === 'connected' ? 'connected' : 'disconnected'
   const isEmpty = !loading && sensors.length === 0
+  const showInitialLoading = loading && sensors.length === 0
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this sensor?')) return
@@ -359,13 +523,25 @@ function App() {
               <StatusIndicator value={systemStatus === 'connected' ? 1 : 0} label="System" />
             </div>
           </div>
+
+          {dockedSensors.length > 0 && (
+            <div className="sensor-dock" ref={dockRef}>
+              <div className="sensor-dock-inner">
+                {dockedSensors.map((sensor) => (
+                  <DockedSensorBar
+                    key={sensor.id}
+                    sensor={sensor}
+                    onDragStart={handleDockDragStart}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </header>
 
-        <main
-          className={`main ${dragging ? 'main--dragging' : ''}`}
-          ref={canvasRef}
-        >
-          {loading ? (
+        <main className={`main ${dragging ? 'main--dragging' : ''}`}>
+          {showInitialLoading ? (
             <div className="empty-state">
               <div className="loading-spinner" />
               <p>Loading sensors...</p>
@@ -381,8 +557,8 @@ function App() {
               </button>
             </div>
           ) : (
-            <section className="sensor-canvas">
-              {sensors.map((sensor) => (
+            <section className="sensor-canvas" ref={canvasRef}>
+              {placedSensors.map((sensor) => (
                 <SensorCard
                   key={sensor.id}
                   sensor={sensor}
@@ -409,10 +585,30 @@ function App() {
         </footer>
       </div>
 
+      {ghostSensor && (
+        <div
+          ref={ghostRef}
+          className="card sensor-card sensor-card--ghost"
+          style={{ position: 'fixed', left: 0, top: 0, zIndex: 1000, pointerEvents: 'none' }}
+        >
+          <h2>{ghostSensor.label}</h2>
+          <div className={`sensor-fields sensor-fields--${ghostSensor.fields.length}`}>
+            {ghostSensor.fields.map((field) => (
+              <FieldWidget
+                key={field.id}
+                field={field}
+                value={values[ghostSensor.id]?.[field.id] ?? field.settings.min}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {showModal && (
         <AddSensorModal
           onClose={() => setShowModal(false)}
           onAdded={() => refreshSensors()}
+          dockNewSensor={placedSensors.length > 0}
         />
       )}
     </div>

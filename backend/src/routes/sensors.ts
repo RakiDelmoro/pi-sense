@@ -81,7 +81,8 @@ export function createSensorRoutes(mqttManager: MqttManager): Router {
       topic,
       payloadType,
       fields: validation.normalized!,
-      position: { x: 50, y: 50 },
+      position: req.body.position ?? { x: 50, y: 50 },
+      placed: req.body.placed ?? true,
     })
 
     mqttManager.subscribeTopic(sensor.topic)
@@ -99,6 +100,7 @@ export function createSensorRoutes(mqttManager: MqttManager): Router {
     if (label !== undefined) updates.label = label
     if (topic !== undefined) updates.topic = topic
     if (payloadType !== undefined) updates.payloadType = payloadType
+    if (req.body.placed !== undefined) updates.placed = req.body.placed
     if (fields !== undefined) {
       const validation = validateFields(payloadType ?? existing.payloadType, fields as unknown[])
       if (!validation.valid) {

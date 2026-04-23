@@ -24,6 +24,7 @@ export interface SensorConfig {
   payloadType: 'plain' | 'json'
   fields: FieldConfig[]
   position?: Position
+  placed?: boolean
 }
 
 const API_BASE = import.meta.env.VITE_API_URL || ''

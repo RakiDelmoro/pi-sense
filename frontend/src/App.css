@@ -1087,6 +1087,94 @@
   border: 1px solid rgba(56, 189, 248, 0.06);
 }
 
+/* ── Sensor Dock ── */
+
+.sensor-dock {
+  display: flex;
+  justify-content: center;
+  padding-top: 12px;
+}
+
+.sensor-dock-inner {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  max-width: 100%;
+}
+
+.docked-sensor-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+  min-width: 160px;
+  max-width: 260px;
+  position: relative;
+}
+
+.docked-sensor-bar:hover {
+  border-color: rgba(56, 189, 248, 0.3);
+  box-shadow: 0 4px 16px rgba(56, 189, 248, 0.1);
+  transform: translateY(-1px);
+}
+
+.docked-sensor-bar:active {
+  cursor: grabbing;
+}
+
+.docked-sensor-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-h);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.docked-sensor-hint {
+  font-size: 10px;
+  color: var(--text);
+  opacity: 0.5;
+  white-space: nowrap;
+  margin-left: auto;
+  font-weight: 500;
+}
+
+.docked-sensor-bar .sensor-delete {
+  position: static;
+  opacity: 0.7;
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  border-radius: 6px;
+}
+
+.docked-sensor-bar .sensor-delete:hover {
+  opacity: 1;
+}
+
+/* ── Ghost Card ── */
+
+.sensor-card--ghost {
+  cursor: grabbing;
+  z-index: 1000;
+  box-shadow:
+    0 0 0 2px rgba(56, 189, 248, 0.4),
+    0 24px 64px rgba(56, 189, 248, 0.2),
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 40px rgba(56, 189, 248, 0.1);
+  opacity: 0.95;
+}
+
 /* ── Modal Wide ── */
 
 .modal-wide {

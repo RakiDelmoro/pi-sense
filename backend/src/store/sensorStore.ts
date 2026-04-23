@@ -28,6 +28,7 @@ export interface SensorConfig {
   payloadType: 'plain' | 'json'
   fields: FieldConfig[]
   position?: Position
+  placed?: boolean
 }
 
 // Legacy interface for migration
@@ -41,6 +42,7 @@ interface LegacySensorConfig {
   settings?: SensorSettings
   fields?: FieldConfig[]
   position?: Position
+  placed?: boolean
 }
 
 const DATA_FILE = resolve('backend/data/sensors.json')
