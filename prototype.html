@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PiSense Monitor — UI Prototype</title>
+  <style>
+    :root {
+      --bg: #f1f3f5;
+      --canvas-bg: #e9ecef;
+      --card: #ffffff;
+      --border: #dee2e6;
+      --border-hover: #adb5bd;
+      --text: #495057;
+      --text-h: #212529;
+      --text-muted: #868e96;
+      --gauge-track: #e9ecef;
+      --sparkline-opacity: 0.06;
+      --accent-cyan: #0c8599;
+      --accent-amber: #e67700;
+      --accent-emerald: #2b8a3e;
+      --accent-rose: #c92a2a;
+      --accent-blue: #1864ab;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+      --radius: 16px;
+      --radius-sm: 10px;
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      --font-mono: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', monospace;
+    }
+
+    [data-theme="dark"] {
+      --bg: #0f1117;
+      --canvas-bg: #181b24;
+      --card: #1e2330;
+      --border: #2a3040;
+      --border-hover: #3d4660;
+      --text: #a0a8b8;
+      --text-h: #e8eaed;
+      --text-muted: #5c6578;
+      --gauge-track: #2a3040;
+      --sparkline-opacity: 0.08;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.6);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--text);
+      transition: background 0.4s ease, color 0.4s ease;
+    }
+
+    /* ── Theme Toggle ── */
+    .theme-toggle {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      padding: 0;
+    }
+
+    .theme-toggle:hover {
+      border-color: var(--border-hover);
+      color: var(--text-h);
+    }
+
+    .theme-toggle svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    /* ── Header ── */
+    .header {
+      height: 64px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      flex-shrink: 0;
+      z-index: 10;
+      transition: background 0.4s ease, border-color 0.4s ease;
+    }
+
+    .logo-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: var(--text-h);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--bg);
+      transition: background 0.4s ease, color 0.4s ease;
+    }
+
+    .logo-icon svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .logo-text h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-h);
+      letter-spacing: -0.3px;
+      transition: color 0.4s ease;
+    }
+
+    .logo-text span {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 500;
+      transition: color 0.4s ease;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      background: var(--text-h);
+      color: var(--bg);
+      transition: background 0.4s ease, color 0.4s ease;
+    }
+
+    .btn-primary:hover {
+      background: #343a40;
+      color: #fff;
+      transform: translateY(-1px);
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(43, 138, 62, 0.15);
+      color: var(--accent-emerald);
+      border: 1px solid rgba(43, 138, 62, 0.25);
+      transition: background 0.4s ease, color 0.4s ease;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .clock {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+      transition: color 0.4s ease;
+    }
+
+    /* ── Layout ── */
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    .main {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* ── Canvas Grid ── */
+    .canvas {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle, var(--border) 1px, transparent 1px) 0 0 / 24px 24px;
+      background-color: var(--canvas-bg);
+      transition: background 0.4s ease;
+    }
+
+    /* ── Sensor Card ── */
+    .sensor-card {
+      position: absolute;
+      width: 240px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+      cursor: grab;
+      user-select: none;
+      transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.1s ease, background 0.4s ease;
+      z-index: 2;
+    }
+
+    .sensor-card:hover {
+      box-shadow: var(--shadow-md);
+      border-color: var(--border-hover);
+      transform: translateY(-2px);
+    }
+
+    .sensor-card.dragging {
+      cursor: grabbing;
+      z-index: 100;
+      box-shadow: var(--shadow-lg);
+      transform: scale(1.02);
+    }
+
+    .sensor-card--ghost {
+      position: fixed;
+      pointer-events: none;
+      z-index: 1000;
+      opacity: 0.92;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .type-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .card-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-h);
+      letter-spacing: -0.2px;
+      transition: color 0.4s ease;
+    }
+
+    .card-menu {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      transition: background 0.15s, color 0.4s ease;
+    }
+
+    .card-menu:hover {
+      background: var(--bg);
+    }
+
+    /* ── Numeric Widget ── */
+    .widget-numeric {
+      text-align: center;
+      padding: 8px 0;
+    }
+
+    .numeric-value {
+      font-family: var(--font-mono);
+      font-size: 40px;
+      font-weight: 700;
+      color: var(--text-h);
+      letter-spacing: -1px;
+      line-height: 1;
+      transition: color 0.4s ease;
+    }
+
+    .numeric-unit {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 4px;
+      transition: color 0.4s ease;
+    }
+
+    /* ── Gauge Widget ── */
+    .widget-gauge {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .gauge-svg {
+      margin-bottom: -30px;
+    }
+
+    .gauge-value-row {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .gauge-value {
+      font-family: var(--font-mono);
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text-h);
+      transition: color 0.4s ease;
+    }
+
+    .gauge-unit {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      transition: color 0.4s ease;
+    }
+
+    .gauge-ticks {
+      display: flex;
+      justify-content: space-between;
+      width: 160px;
+      margin-top: 8px;
+      font-size: 10px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      transition: color 0.4s ease;
+    }
+
+    /* ── Flow Widget ── */
+    .widget-flow {
+      text-align: center;
+    }
+
+    .flow-value {
+      font-family: var(--font-mono);
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--text-h);
+      line-height: 1;
+      transition: color 0.4s ease;
+    }
+
+    .flow-unit {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 4px;
+      display: block;
+      transition: color 0.4s ease;
+    }
+
+    .flow-segments {
+      display: flex;
+      gap: 3px;
+      justify-content: center;
+      margin-top: 14px;
+      height: 8px;
+    }
+
+    .flow-segment {
+      flex: 1;
+      max-width: 24px;
+      border-radius: 4px;
+      background: var(--border);
+      transition: background 0.3s ease;
+    }
+
+    .flow-segment.active {
+      background: var(--accent-cyan);
+    }
+
+    /* ── Status Widget ── */
+    .widget-status {
+      display: flex;
+      justify-content: center;
+      padding: 12px 0;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-badge.online {
+      background: rgba(43, 138, 62, 0.15);
+      color: var(--accent-emerald);
+      border: 1px solid rgba(43, 138, 62, 0.25);
+      transition: background 0.4s ease;
+    }
+
+    .status-badge.offline {
+      background: rgba(201, 42, 42, 0.15);
+      color: var(--accent-rose);
+      border: 1px solid rgba(201, 42, 42, 0.25);
+      transition: background 0.4s ease;
+    }
+
+    /* ── Sparkline ── */
+    .sparkline {
+      margin-top: 16px;
+      height: 40px;
+    }
+
+    .sparkline svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    .sparkline-line {
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .sparkline-fill {
+      stroke: none;
+      opacity: 0.06;
+    }
+
+    [data-theme="dark"] .sparkline-fill {
+      opacity: 0.08;
+    }
+
+    /* ── Meta Row ── */
+    .card-meta {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      transition: color 0.4s ease, border-color 0.4s ease;
+    }
+
+    .card-meta span {
+      display: flex;
+      gap: 4px;
+    }
+
+    .card-meta strong {
+      color: var(--text);
+      font-weight: 600;
+      transition: color 0.4s ease;
+    }
+
+    /* ── Dock ── */
+    .dock {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--card);
+      border-top: 1px solid var(--border);
+      padding: 12px 32px;
+      display: flex;
+      justify-content: center;
+      z-index: 50;
+      transition: background 0.4s ease, border-color 0.4s ease;
+    }
+
+    .dock-inner {
+      display: flex;
+      gap: 10px;
+      max-width: 100%;
+      overflow-x: auto;
+    }
+
+    .dock-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      cursor: grab;
+      user-select: none;
+      transition: box-shadow 0.2s ease, border-color 0.2s ease, background 0.4s ease;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-h);
+    }
+
+    .dock-chip:hover {
+      border-color: var(--border-hover);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .dock-chip .type-dot {
+      width: 6px;
+      height: 6px;
+    }
+
+    .dock-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-left: 8px;
+      font-weight: 500;
+      transition: color 0.4s ease;
+    }
+  </style>
+</head>
+<body>
+
+<div class="app">
+  <header class="header">
+    <div class="logo-group">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+      </div>
+      <div class="logo-text">
+        <h1>PiSense</h1>
+        <span>IoT Monitoring Dashboard</span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <span class="clock" id="clock">--:--</span>
+      <div class="status-pill">
+        <span class="status-dot"></span>
+        System Online
+      </div>
+      <button class="theme-toggle" id="themeToggle" title="Toggle theme">
+        <!-- Sun icon -->
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/>
+          <line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/>
+          <line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <!-- Moon icon (hidden by default in light mode) -->
+        <svg class="icon-moon" style="display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+      <button class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Add Sensor
+      </button>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="canvas" id="canvas">
+      <!-- Cards will be injected here -->
+    </div>
+  </main>
+
+  <div class="dock" id="dock">
+    <div class="dock-inner">
+      <div class="dock-chip" id="dockChip" data-sensor="co2">
+        <span class="type-dot" style="background: var(--accent-rose);"></span>
+        <span>CO2 Sensor</span>
+        <span class="dock-hint">Drag to add</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── Theme Toggle ──
+  const themeToggle = document.getElementById('themeToggle');
+  const iconSun = themeToggle.querySelector('.icon-sun');
+  const iconMoon = themeToggle.querySelector('.icon-moon');
+
+  function applyTheme(theme) {
+    if (theme === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      iconSun.style.display = 'none';
+      iconMoon.style.display = 'block';
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      iconSun.style.display = 'block';
+      iconMoon.style.display = 'none';
+    }
+  }
+
+  const savedTheme = localStorage.getItem('pisense-theme');
+  if (savedTheme) {
+    applyTheme(savedTheme);
+  } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    applyTheme('dark');
+  }
+
+  themeToggle.addEventListener('click', () => {
+    const isDark = document.documentElement.hasAttribute('data-theme');
+    const newTheme = isDark ? 'light' : 'dark';
+    applyTheme(newTheme);
+    localStorage.setItem('pisense-theme', newTheme);
+  });
+
+  // ── Clock ──
+  function updateClock() {
+    const now = new Date();
+    document.getElementById('clock').textContent = now.toLocaleTimeString('en-US', {
+      hour: '2-digit', minute: '2-digit', hour12: false
+    });
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  // ── Sensor Data ──
+  const sensors = [
+    {
+      id: 'temp-1',
+      label: 'Living Room Temp',
+      type: 'temperature',
+      color: 'var(--accent-cyan)',
+      widget: 'numeric',
+      value: 24.5,
+      unit: '°C',
+      min: 22.1,
+      max: 26.8,
+      sparkline: [22.1, 22.4, 22.8, 23.2, 23.5, 23.9, 24.1, 24.3, 24.5, 24.7, 24.5, 24.3, 24.0, 23.8, 23.5, 23.3, 23.1, 22.9, 22.7, 22.5],
+      x: 60,
+      y: 80,
+    },
+    {
+      id: 'humid-1',
+      label: 'Bedroom Humidity',
+      type: 'humidity',
+      color: 'var(--accent-amber)',
+      widget: 'gauge',
+      value: 58,
+      unit: '%',
+      min: 0,
+      max: 100,
+      x: 340,
+      y: 80,
+    },
+    {
+      id: 'flow-1',
+      label: 'Water Flow',
+      type: 'flow',
+      color: 'var(--accent-blue)',
+      widget: 'flow',
+      value: 12.5,
+      unit: 'L/min',
+      segments: 5,
+      totalSegments: 10,
+      x: 620,
+      y: 80,
+    },
+    {
+      id: 'motion-1',
+      label: 'Front Door Motion',
+      type: 'motion',
+      color: 'var(--accent-emerald)',
+      widget: 'status',
+      value: 1,
+      x: 60,
+      y: 340,
+    },
+    {
+      id: 'pressure-1',
+      label: 'Pipe Pressure',
+      type: 'pressure',
+      color: 'var(--accent-rose)',
+      widget: 'numeric',
+      value: 3.2,
+      unit: 'bar',
+      min: 2.8,
+      max: 4.1,
+      sparkline: [3.0, 3.1, 3.2, 3.2, 3.3, 3.3, 3.2, 3.2, 3.1, 3.1, 3.2, 3.2, 3.3, 3.4, 3.3, 3.2, 3.2, 3.1, 3.0, 2.9],
+      x: 340,
+      y: 340,
+    },
+  ];
+
+  // ── Sparkline SVG builder ──
+  function sparklineSVG(points, color) {
+    const width = 200;
+    const height = 40;
+    const min = Math.min(...points);
+    const max = Math.max(...points);
+    const range = max - min || 1;
+    const pad = 2;
+
+    const coords = points.map((v, i) => {
+      const x = (i / (points.length - 1)) * width;
+      const y = height - pad - ((v - min) / range) * (height - pad * 2);
+      return [x, y];
+    });
+
+    const linePath = coords.map((c, i) => (i === 0 ? `M ${c[0]},${c[1]}` : `L ${c[0]},${c[1]}`)).join(' ');
+    const fillPath = `${linePath} L ${width},${height} L 0,${height} Z`;
+
+    return `
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+        <path d="${fillPath}" class="sparkline-fill" fill="${color}"/>
+        <path d="${linePath}" class="sparkline-line" stroke="${color}"/>
+      </svg>
+    `;
+  }
+
+  // ── Gauge SVG builder ──
+  function gaugeSVG(value, min, max, color) {
+    const radius = 60;
+    const stroke = 10;
+    const cx = 80;
+    const cy = 80;
+    const arc = Math.PI * radius;
+    const pct = Math.max(0, Math.min(1, (value - min) / (max - min)));
+    const fill = pct * arc;
+    const trackColor = getComputedStyle(document.documentElement).getPropertyValue('--gauge-track').trim() || '#e9ecef';
+
+    return `
+      <svg class="gauge-svg" width="160" height="90" viewBox="0 0 160 90">
+        <path d="M ${cx - radius} ${cy} A ${radius} ${radius} 0 0 1 ${cx + radius} ${cy}" fill="none" stroke="var(--gauge-track)" stroke-width="${stroke}" stroke-linecap="round"/>
+        <path d="M ${cx - radius} ${cy} A ${radius} ${radius} 0 0 1 ${cx + radius} ${cy}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${fill} ${arc}"/>
+      </svg>
+    `;
+  }
+
+  // ── Render Card ──
+  function renderCard(sensor) {
+    let widgetHTML = '';
+
+    if (sensor.widget === 'numeric') {
+      widgetHTML = `
+        <div class="widget-numeric">
+          <div class="numeric-value">${sensor.value}</div>
+          <div class="numeric-unit">${sensor.unit}</div>
+        </div>
+        ${sensor.sparkline ? `<div class="sparkline">${sparklineSVG(sensor.sparkline, sensor.color)}</div>` : ''}
+        <div class="card-meta">
+          <span>Min <strong>${sensor.min}</strong></span>
+          <span>Max <strong>${sensor.max}</strong></span>
+        </div>
+      `;
+    } else if (sensor.widget === 'gauge') {
+      widgetHTML = `
+        <div class="widget-gauge">
+          ${gaugeSVG(sensor.value, sensor.min, sensor.max, sensor.color)}
+          <div class="gauge-value-row">
+            <span class="gauge-value">${sensor.value}</span>
+            <span class="gauge-unit">${sensor.unit}</span>
+          </div>
+          <div class="gauge-ticks">
+            <span>${sensor.min}</span>
+            <span>${Math.round((sensor.min + sensor.max) / 2)}</span>
+            <span>${sensor.max}</span>
+          </div>
+        </div>
+      `;
+    } else if (sensor.widget === 'flow') {
+      const segs = Array.from({ length: sensor.totalSegments }, (_, i) =>
+        `<div class="flow-segment ${i < sensor.segments ? 'active' : ''}"></div>`
+      ).join('');
+      widgetHTML = `
+        <div class="widget-flow">
+          <div class="flow-value">${sensor.value}</div>
+          <span class="flow-unit">${sensor.unit}</span>
+          <div class="flow-segments">${segs}</div>
+        </div>
+      `;
+    } else if (sensor.widget === 'status') {
+      const online = sensor.value > 0;
+      widgetHTML = `
+        <div class="widget-status">
+          <div class="status-badge ${online ? 'online' : 'offline'}">
+            <span class="status-dot" style="background: currentColor; opacity: 0.8;"></span>
+            ${online ? 'Motion Detected' : 'Clear'}
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="sensor-card" data-id="${sensor.id}" style="left: ${sensor.x}px; top: ${sensor.y}px;">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="type-dot" style="background: ${sensor.color};"></span>
+            <span class="card-label">${sensor.label}</span>
+          </div>
+          <button class="card-menu">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none"/>
+              <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+              <circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none"/>
+            </svg>
+          </button>
+        </div>
+        ${widgetHTML}
+      </div>
+    `;
+  }
+
+  // ── Init Canvas ──
+  const canvas = document.getElementById('canvas');
+  canvas.innerHTML = sensors.map(renderCard).join('');
+
+  // ── Unified Drag & Drop ──
+  let dragEl = null;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+  let isGhost = false;
+  let ghostSensor = null;
+
+  function getClientPos(e) {
+    return e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
+  }
+
+  function startDrag(e) {
+    if (e.target.closest('.card-menu')) return;
+    e.preventDefault();
+
+    const card = e.currentTarget;
+    const rect = card.getBoundingClientRect();
+    const pos = getClientPos(e);
+
+    dragOffsetX = pos.x - rect.left;
+    dragOffsetY = pos.y - rect.top;
+    dragEl = card;
+    isGhost = false;
+
+    card.classList.add('dragging');
+  }
+
+  function startDockDrag(e) {
+    e.preventDefault();
+    const chip = e.currentTarget;
+    const pos = getClientPos(e);
+
+    ghostSensor = {
+      id: 'co2-new',
+      label: 'CO2 Sensor',
+      type: 'co2',
+      color: 'var(--accent-rose)',
+      widget: 'numeric',
+      value: 420,
+      unit: 'ppm',
+      min: 380,
+      max: 560,
+      sparkline: [380, 390, 400, 410, 415, 420, 425, 430, 435, 440, 445, 450, 460, 470, 480, 490, 500, 520, 540, 560],
+    };
+
+    const ghost = document.createElement('div');
+    ghost.className = 'sensor-card sensor-card--ghost';
+    ghost.style.width = '240px';
+    ghost.style.left = '0px';
+    ghost.style.top = '0px';
+    ghost.innerHTML = renderCard(ghostSensor).replace(/sensor-card/g, '').replace(/data-id="[^"]*"/g, '');
+    document.body.appendChild(ghost);
+
+    dragOffsetX = 120;
+    dragOffsetY = 20;
+    dragEl = ghost;
+    isGhost = true;
+  }
+
+  function onMove(e) {
+    if (!dragEl) return;
+    e.preventDefault();
+    const pos = getClientPos(e);
+
+    if (isGhost) {
+      dragEl.style.transform = `translate(${pos.x - dragOffsetX}px, ${pos.y - dragOffsetY}px)`;
+      const canvasRect = canvas.getBoundingClientRect();
+      const ghostRect = dragEl.getBoundingClientRect();
+      const overCanvas = ghostRect.top < canvasRect.bottom - 40 && ghostRect.left < canvasRect.right && ghostRect.right > canvasRect.left;
+      dragEl.style.opacity = overCanvas ? '0.95' : '0.5';
+    } else {
+      const canvasRect = canvas.getBoundingClientRect();
+      let x = pos.x - canvasRect.left - dragOffsetX;
+      let y = pos.y - canvasRect.top - dragOffsetY;
+      x = Math.max(0, Math.min(x, canvasRect.width - dragEl.offsetWidth));
+      y = Math.max(0, Math.min(y, canvasRect.height - dragEl.offsetHeight));
+      dragEl.style.left = x + 'px';
+      dragEl.style.top = y + 'px';
+    }
+  }
+
+  function onEnd() {
+    if (!dragEl) return;
+
+    if (isGhost) {
+      const canvasRect = canvas.getBoundingClientRect();
+      const ghostRect = dragEl.getBoundingClientRect();
+      const overCanvas = ghostRect.top < canvasRect.bottom - 40 && ghostRect.left < canvasRect.right && ghostRect.right > canvasRect.left;
+
+      if (overCanvas) {
+        const newCard = document.createElement('div');
+        newCard.className = 'sensor-card';
+        newCard.dataset.id = ghostSensor.id;
+        newCard.style.left = (ghostRect.left - canvasRect.left) + 'px';
+        newCard.style.top = (ghostRect.top - canvasRect.top) + 'px';
+        newCard.innerHTML = renderCard(ghostSensor).replace(/sensor-card/g, '').replace(/data-id="[^"]*"/g, '');
+        canvas.appendChild(newCard);
+        newCard.addEventListener('mousedown', startDrag);
+        newCard.addEventListener('touchstart', startDrag, { passive: false });
+      }
+
+      dragEl.remove();
+      isGhost = false;
+    } else {
+      dragEl.classList.remove('dragging');
+    }
+
+    dragEl = null;
+  }
+
+  // Attach listeners to existing cards
+  document.querySelectorAll('.sensor-card').forEach(card => {
+    card.addEventListener('mousedown', startDrag);
+    card.addEventListener('touchstart', startDrag, { passive: false });
+  });
+
+  // Attach dock chip
+  document.getElementById('dockChip').addEventListener('mousedown', startDockDrag);
+  document.getElementById('dockChip').addEventListener('touchstart', startDockDrag, { passive: false });
+
+  // Global listeners
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('touchmove', onMove, { passive: false });
+  window.addEventListener('mouseup', onEnd);
+  window.addEventListener('touchend', onEnd);
+</script>
+
+</body>
+</html>
