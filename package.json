@@ -1,0 +1,14 @@
+{
+  "name": "pisense",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run server.ts",
+    "dev": "bun run build && bun run --parallel --no-exit-on-error build:watch serve",
+    "build": "bun build src/app.ts --outdir dist --target browser",
+    "build:watch": "bun build src/app.ts --outdir dist --target browser --watch",
+    "serve": "bun run server.ts",
+    "test": "bun test"
+  }
+}
