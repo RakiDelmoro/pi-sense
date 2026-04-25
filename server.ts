@@ -33,6 +33,19 @@ serve({
       return new Response('Not Found', { status: 404 });
     }
 
+    if (path.endsWith('.ts')) {
+      const result = await Bun.build({
+        entrypoints: [filePath],
+        target: 'browser',
+      });
+      if (!result.success) {
+        return new Response('Build Error', { status: 500 });
+      }
+      return new Response(result.outputs[0], {
+        headers: { 'Content-Type': 'application/javascript' },
+      });
+    }
+
     return new Response(file, {
       headers: { 'Content-Type': getMimeType(path) },
     });
