@@ -76,3 +76,40 @@ export function removeHistory(sensorId: string): void {
 export function clearHistory(): void {
   localStorage.removeItem(HISTORY_KEY);
 }
+
+const VALUES_KEY = "pi-sense-values";
+
+export interface LastValueEntry {
+  value: string | number | boolean;
+  ts: number;
+}
+
+export function loadLastValues(): Record<string, LastValueEntry> {
+  try {
+    const raw = localStorage.getItem(VALUES_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Record<string, LastValueEntry>;
+  } catch {
+    return {};
+  }
+}
+
+export function saveLastValues(values: Record<string, LastValueEntry>): void {
+  localStorage.setItem(VALUES_KEY, JSON.stringify(values));
+}
+
+export function saveLastValue(sensorId: string, value: string | number | boolean, ts: number): void {
+  const values = loadLastValues();
+  values[sensorId] = { value, ts };
+  saveLastValues(values);
+}
+
+export function removeLastValue(sensorId: string): void {
+  const values = loadLastValues();
+  delete values[sensorId];
+  saveLastValues(values);
+}
+
+export function clearLastValues(): void {
+  localStorage.removeItem(VALUES_KEY);
+}

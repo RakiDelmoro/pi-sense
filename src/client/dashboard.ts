@@ -1,7 +1,7 @@
 import type { SensorConfig } from "./types";
 import { createWidget, type Widget } from "./widgets";
 import { subscribe, unsubscribe, onMessage, onStatusChange } from "./mqtt";
-import { loadSensors, saveSensors, addSensor, removeSensor, loadHistory, addHistoryPoint, removeHistory, clearHistory } from "./storage";
+import { loadSensors, saveSensors, addSensor, removeSensor, loadHistory, addHistoryPoint, removeHistory, clearHistory, loadLastValues, saveLastValue, removeLastValue, clearLastValues } from "./storage";
 import { extractValue } from "./payload";
 import { renderChart, type DataPoint } from "./chart";
 
@@ -125,6 +125,11 @@ export function initDashboard() {
   for (const [id, points] of Object.entries(persisted)) {
     historyBuffers.set(id, points);
   }
+  const persistedValues = loadLastValues();
+  for (const [id, entry] of Object.entries(persistedValues)) {
+    lastValues.set(id, entry.value);
+    lastUpdated.set(id, entry.ts);
+  }
   for (const cfg of saved) {
     createSensorCard(cfg);
   }
@@ -234,6 +239,7 @@ function handleReset() {
   lastValues.clear();
   historyBuffers.clear();
   clearHistory();
+  clearLastValues();
   saveSensors([]);
   getGrid().innerHTML = "";
   showEmptyState();
@@ -244,10 +250,19 @@ function createSensorCard(config: SensorConfig) {
 
   sensors.set(config.id, config);
   subscribe(config.topic);
-  historyBuffers.set(config.id, []);
+  if (!historyBuffers.has(config.id)) {
+    historyBuffers.set(config.id, []);
+  }
 
   const widget = createWidget(config);
   widgets.set(config.id, widget);
+
+  // Restore persisted value display
+  const persistedValue = lastValues.get(config.id);
+  const persistedTs = lastUpdated.get(config.id);
+  if (persistedValue !== undefined && persistedTs !== undefined) {
+    widget.update({ topic: config.topic, value: persistedValue, rawPayload: "", timestamp: persistedTs });
+  }
 
   const card = widget.element;
   card.dataset.sensorId = config.id;
@@ -304,7 +319,8 @@ function createSensorCard(config: SensorConfig) {
 
   const time = document.createElement("span");
   time.className = "meta-time";
-  time.textContent = "waiting...";
+  const ts = lastUpdated.get(config.id);
+  time.textContent = ts ? formatTimeAgo(Date.now() - ts) : "waiting...";
 
   liveSpan.appendChild(dot);
   liveSpan.appendChild(time);
@@ -325,6 +341,7 @@ function removeCard(id: string) {
   lastValues.delete(id);
   historyBuffers.delete(id);
   removeHistory(id);
+  removeLastValue(id);
   removeSensor(id);
 
   const card = document.querySelector(`[data-sensor-id="${id}"]`);
@@ -408,8 +425,12 @@ function handleMqttMessage(topic: string, payload: string) {
           setTimeout(() => gaugeVal.classList.remove("value-changed"), 400);
         }
       }
-      lastValues.set(id, reading.value);
     }
+
+    // Persist latest value + timestamp
+    lastValues.set(id, reading.value);
+    lastUpdated.set(id, Date.now());
+    saveLastValue(id, reading.value, Date.now());
 
     // Store numeric history
     const num = Number(reading.value);
@@ -435,7 +456,6 @@ function handleMqttMessage(topic: string, payload: string) {
       }
     }
 
-    lastUpdated.set(id, Date.now());
     const card = document.querySelector(`[data-sensor-id="${id}"]`) as HTMLElement | null;
     if (card) {
       const timeEl = card.querySelector(".meta-time") as HTMLElement | null;
