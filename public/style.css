@@ -518,8 +518,7 @@ body {
   transition: color var(--transition);
 }
 
-.text-value.value-changed,
-.gauge-value-below.value-changed {
+.text-value.value-changed {
   animation: valuePulse 0.35s ease;
 }
 
@@ -564,23 +563,6 @@ body {
   max-width: 220px;
   height: auto;
   display: block;
-}
-
-.gauge-value-below {
-  font-size: 1.6rem;
-  font-weight: 300;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  transition: color var(--transition);
-}
-
-.gauge-unit-inline {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--accent);
-  margin-left: 3px;
 }
 
 /* ========================================

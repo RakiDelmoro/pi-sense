@@ -129,17 +129,6 @@ export function createGaugeWidget(config: SensorConfig): Widget {
 
   body.appendChild(svg);
 
-  const valueBelow = document.createElement("div");
-  valueBelow.className = "gauge-value-below";
-  valueBelow.textContent = "—";
-  if (config.unit) {
-    const u = document.createElement("span");
-    u.className = "gauge-unit-inline";
-    u.textContent = config.unit;
-    valueBelow.appendChild(u);
-  }
-  body.appendChild(valueBelow);
-
   function arcPath(percent: number): string {
     const angle = Math.PI + percent * Math.PI;
     const x = 60 + 50 * Math.cos(angle);
@@ -155,7 +144,6 @@ export function createGaugeWidget(config: SensorConfig): Widget {
       if (Number.isNaN(num)) {
         text.textContent = String(reading.value);
         bar.setAttribute("d", "");
-        valueBelow.textContent = String(reading.value);
         return;
       }
       const clamped = Math.max(min, Math.min(max, num));
@@ -163,7 +151,6 @@ export function createGaugeWidget(config: SensorConfig): Widget {
       bar.setAttribute("d", arcPath(pct));
       bar.setAttribute("stroke", gaugeColor(pct));
       text.textContent = String(num);
-      valueBelow.childNodes[0].textContent = String(num);
     },
   };
 }
