@@ -1,0 +1,10 @@
+{
+  "name": "pi-sense",
+  "version": "1.0.0",
+  "description": "Lightweight Home Assistant-style MQTT dashboard for Raspberry Pi",
+  "scripts": {
+    "start": "bun run src/server/main.ts",
+    "test": "bun test",
+    "mock": "bun run src/server/mock-publish.ts"
+  }
+}

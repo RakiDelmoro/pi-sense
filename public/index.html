@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PiSense - Home Monitoring</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="hero-bar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M2 14L16 2L30 14V30H2V14Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M12 20V26M12 20H9M12 20H15M20 20V26M20 20H17M20 20H23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <div class="brand-text">
+        <h1>PiSense</h1>
+        <span class="tagline">Your data, Your home, Your view</span>
+      </div>
+    </div>
+    <div class="hero-actions">
+      <div class="status-indicator" id="conn-status" title="MQTT status">
+        <span class="status-dot"></span>
+        <span class="status-label">Connecting...</span>
+      </div>
+      <button id="theme-toggle" class="icon-btn" title="Toggle theme" aria-label="Toggle dark mode">🌙</button>
+      <button id="add-sensor-btn" class="btn-primary">+ Add Sensor</button>
+      <button id="reset-all-btn" class="btn-danger icon-btn" title="Reset all sensors" aria-label="Reset all sensors">↺</button>
+    </div>
+  </header>
+
+  <main class="dashboard">
+    <div id="sensor-grid" class="sensor-grid"></div>
+  </main>
+
+  <div id="modal-overlay" class="modal-overlay"></div>
+  <div id="add-sensor-modal" class="modal">
+    <div class="modal-header">
+      <h2>Add Sensor</h2>
+      <button id="modal-close" class="modal-close" aria-label="Close modal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <label>
+        <span>MQTT Topic *</span>
+        <input type="text" id="input-topic" placeholder="home/livingroom/temperature" />
+      </label>
+      <label>
+        <span>Label Name</span>
+        <input type="text" id="input-label" placeholder="Living Room Temperature" />
+      </label>
+      <label>
+        <span>Payload Type</span>
+        <select id="input-payload-type">
+          <option value="plain">Plain Text</option>
+          <option value="json">JSON</option>
+        </select>
+      </label>
+      <label id="json-path-row" style="display:none">
+        <span>JSON Key Path (dot notation)</span>
+        <input type="text" id="input-json-path" placeholder="temperature or dht22.temp" />
+      </label>
+      <label>
+        <span>Widget Type</span>
+        <select id="input-widget-type">
+          <option value="text">Text Display</option>
+          <option value="gauge">Gauge</option>
+          <option value="switch">Switch</option>
+        </select>
+      </label>
+      <label>
+        <span>Unit</span>
+        <input type="text" id="input-unit" placeholder="°C, %, lux" />
+      </label>
+      <label id="min-max-row" style="display:none">
+        <span>Min / Max</span>
+        <div class="minmax-row">
+          <input type="number" id="input-min" placeholder="0" value="0" />
+          <input type="number" id="input-max" placeholder="100" value="100" />
+        </div>
+      </label>
+      <div>
+        <div class="modal-preview-label">Preview</div>
+        <div id="modal-preview" class="modal-preview"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button id="modal-cancel" class="btn-secondary">Cancel</button>
+      <button id="modal-save" class="btn-primary">Save</button>
+    </div>
+  </div>
+
+  <!-- Chart Overlay -->
+  <div id="chart-overlay" class="chart-overlay">
+    <div class="chart-overlay-panel">
+      <div class="chart-overlay-header">
+        <div class="chart-overlay-title-group">
+          <h2 id="chart-overlay-title">Sensor</h2>
+          <div class="chart-overlay-current">
+            <span id="chart-overlay-value" class="chart-overlay-value">—</span>
+            <span id="chart-overlay-unit" class="chart-overlay-unit"></span>
+          </div>
+        </div>
+        <button id="chart-overlay-close" class="modal-close" aria-label="Close chart">&times;</button>
+      </div>
+      <div id="chart-overlay-inner" class="chart-overlay-inner"></div>
+    </div>
+  </div>
+
+  <script type="module" src="client.js"></script>
+</body>
+</html>
