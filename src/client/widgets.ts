@@ -133,8 +133,7 @@ export function createGaugeWidget(config: SensorConfig): Widget {
     const angle = Math.PI + percent * Math.PI;
     const x = 60 + 50 * Math.cos(angle);
     const y = 60 + 50 * Math.sin(angle);
-    const largeArc = percent > 0.5 ? 1 : 0;
-    return `M 10 60 A 50 50 0 ${largeArc} 1 ${x} ${y}`;
+    return `M 10 60 A 50 50 0 0 1 ${x} ${y}`;
   }
 
   return {
