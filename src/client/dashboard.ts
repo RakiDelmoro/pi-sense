@@ -1,7 +1,7 @@
 import type { SensorConfig } from "./types";
 import { createWidget, type Widget } from "./widgets";
 import { subscribe, unsubscribe, onMessage, onStatusChange } from "./mqtt";
-import { loadSensors, saveSensors, addSensor, removeSensor } from "./storage";
+import { loadSensors, saveSensors, addSensor, removeSensor, loadHistory, addHistoryPoint, removeHistory, clearHistory } from "./storage";
 import { extractValue } from "./payload";
 import { renderChart, type DataPoint } from "./chart";
 
@@ -121,6 +121,10 @@ export function initDashboard() {
   });
 
   const saved = loadSensors();
+  const persisted = loadHistory();
+  for (const [id, points] of Object.entries(persisted)) {
+    historyBuffers.set(id, points);
+  }
   for (const cfg of saved) {
     createSensorCard(cfg);
   }
@@ -229,6 +233,7 @@ function handleReset() {
   lastUpdated.clear();
   lastValues.clear();
   historyBuffers.clear();
+  clearHistory();
   saveSensors([]);
   getGrid().innerHTML = "";
   showEmptyState();
@@ -319,6 +324,7 @@ function removeCard(id: string) {
   lastUpdated.delete(id);
   lastValues.delete(id);
   historyBuffers.delete(id);
+  removeHistory(id);
   removeSensor(id);
 
   const card = document.querySelector(`[data-sensor-id="${id}"]`);
@@ -408,10 +414,12 @@ function handleMqttMessage(topic: string, payload: string) {
     // Store numeric history
     const num = Number(reading.value);
     if (!Number.isNaN(num)) {
+      const point: DataPoint = { ts: Date.now(), value: num };
       const buffer = historyBuffers.get(id) || [];
-      buffer.push({ ts: Date.now(), value: num });
+      buffer.push(point);
       if (buffer.length > 120) buffer.shift();
       historyBuffers.set(id, buffer);
+      addHistoryPoint(id, point);
 
       // If chart overlay is open for this sensor, re-render
       const chartOverlay = getChartOverlay();
