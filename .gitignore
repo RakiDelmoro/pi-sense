@@ -1,3 +1,7 @@
 dist/
 node_modules/
 .env
+state
+.opencode
+daily/
+knowledge

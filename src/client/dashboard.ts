@@ -315,7 +315,7 @@ function createSensorCard(config: SensorConfig) {
   liveSpan.style.gap = "6px";
 
   const dot = document.createElement("span");
-  dot.className = "sensor-live-dot";
+  dot.className = "sensor-live-dot online";
 
   const time = document.createElement("span");
   time.className = "meta-time";

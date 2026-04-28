@@ -4,18 +4,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PiSense - Home Monitoring</title>
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.2.0/dist/fonts/geist-sans/style.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.2.0/dist/fonts/geist-mono/style.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header class="hero-bar">
     <div class="brand">
-      <svg class="logo" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <path d="M2 14L16 2L30 14V30H2V14Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-        <path d="M12 20V26M12 20H9M12 20H15M20 20V26M20 20H17M20 20H23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-      </svg>
+      <img class="logo" src="intrusion-detection-system.png" alt="PiSense" />
       <div class="brand-text">
         <h1>PiSense</h1>
-        <span class="tagline">Your data, Your home, Your view</span>
+        <span class="tagline">Your data, Your Home, Your View</span>
       </div>
     </div>
     <div class="hero-actions">
@@ -23,7 +23,12 @@
         <span class="status-dot"></span>
         <span class="status-label">Connecting...</span>
       </div>
-      <button id="theme-toggle" class="icon-btn" title="Toggle theme" aria-label="Toggle dark mode">🌙</button>
+      <button id="theme-toggle" class="icon-btn" title="Toggle theme" aria-label="Toggle dark mode">
+        <svg class="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M12 3 A9 9 0 0 1 12 21 Z" fill="currentColor" stroke="none"/>
+        </svg>
+      </button>
       <button id="add-sensor-btn" class="btn-primary">+ Add Sensor</button>
       <button id="reset-all-btn" class="btn-danger icon-btn" title="Reset all sensors" aria-label="Reset all sensors">↺</button>
     </div>

@@ -85,9 +85,7 @@ export function createTextWidget(config: SensorConfig): Widget {
   };
 }
 
-function gaugeColor(pct: number): string {
-  if (pct >= 0.9) return "var(--danger)";
-  if (pct >= 0.75) return "var(--warning)";
+function gaugeColor(_pct: number): string {
   return "var(--accent)";
 }
 

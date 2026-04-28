@@ -22,8 +22,8 @@ function initTheme() {
 function updateThemeIcon(theme: "light" | "dark") {
   const toggleBtn = document.getElementById("theme-toggle") as HTMLButtonElement | null;
   if (toggleBtn) {
-    toggleBtn.textContent = theme === "dark" ? "☀️" : "🌙";
     toggleBtn.title = theme === "dark" ? "Switch to light mode" : "Switch to dark mode";
+    toggleBtn.setAttribute("aria-label", theme === "dark" ? "Switch to light mode" : "Switch to dark mode");
   }
 }
 
