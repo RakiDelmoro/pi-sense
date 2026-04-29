@@ -1,0 +1,16 @@
+{
+  "server": {
+    "port": 9733
+  },
+  "llm": {
+    "provider": "openrouter",
+    "api_key": "YOUR_API_KEY",
+    "model": "deepseek/deepseek-chat-v3-0324"
+  },
+  "mqtt": {
+    "default_broker": "localhost",
+    "default_port": 1883,
+    "client_id": "pi-sense"
+  },
+  "db_path": "pi-sense.db"
+}
