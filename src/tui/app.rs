@@ -14,7 +14,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Block, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
+    widgets::{Block, Paragraph},
     text::{Line, Span},
 };
 use std::collections::HashMap;
@@ -380,28 +380,6 @@ impl App {
 
         // ── chat pane ───────────────────────────────────────────────────
         self.chat.draw(f, main_chunks[0]);
-
-        // ── scrollbar ───────────────────────────────────────────────────
-        let line_count = self.chat.line_count() as u16;
-        let visible_height = main_chunks[0].height;
-        if line_count > visible_height {
-            let max_offset = line_count.saturating_sub(visible_height);
-            let scroll = if self.chat.is_following() {
-                max_offset as usize
-            } else {
-                max_offset.saturating_sub(self.chat.scroll_offset()) as usize
-            };
-
-            let mut scrollbar_state = ScrollbarState::new(line_count as usize)
-                .position(scroll)
-                .viewport_content_length(visible_height as usize);
-
-            let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-                .thumb_style(Style::default().fg(PI_SENSE_ACCENT))
-                .track_style(Style::default().fg(Color::Rgb(40, 40, 50)));
-
-            f.render_stateful_widget(scrollbar, main_chunks[0], &mut scrollbar_state);
-        }
 
         // ── "new messages" badge ────────────────────────────────────────
         let new_count = self.chat.new_messages_while_scrolled();
