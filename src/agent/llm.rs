@@ -36,6 +36,7 @@ pub struct ToolFunc {
 
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
+    ThinkingChunk(String),
     TextChunk(String),
     ToolCallStart(String),
     ToolCall { id: String, name: String, arguments: String },
@@ -211,6 +212,17 @@ impl LlmClient {
             if finish_reason == Some("tool_calls") || finish_reason == Some("function_call") {
                 *in_tool_mode = true;
                 return;
+            }
+
+            // Reasoning / thinking content
+            // Some providers use "reasoning_content" (DeepSeek, Claude 3.7+), others "reasoning" (PPQ/Stepfun)
+            let reasoning_text = delta.get("reasoning_content")
+                .and_then(|c| c.as_str())
+                .or_else(|| delta.get("reasoning").and_then(|c| c.as_str()));
+            if let Some(reasoning) = reasoning_text {
+                if !reasoning.is_empty() {
+                    let _ = tx.send(StreamEvent::ThinkingChunk(reasoning.to_string())).await;
+                }
             }
 
             // Text content

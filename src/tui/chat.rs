@@ -9,6 +9,7 @@ use ratatui::{
 enum ChatLine {
     System(String),
     User(String),
+    Thinking(String),
     Assistant(String),
     ToolCall(String),
     ToolResult(String),
@@ -17,6 +18,7 @@ enum ChatLine {
 pub struct ChatPane {
     messages: Vec<ChatLine>,
     scroll_offset: u16,
+    thinking_buffer: String,
     stream_buffer: String,
     streaming: bool,
 }
@@ -26,6 +28,7 @@ impl ChatPane {
         Self {
             messages: Vec::new(),
             scroll_offset: 0,
+            thinking_buffer: String::new(),
             stream_buffer: String::new(),
             streaming: false,
         }
@@ -47,8 +50,19 @@ impl ChatPane {
 
     pub fn start_stream(&mut self) {
         self.streaming = true;
+        self.thinking_buffer.clear();
         self.stream_buffer.clear();
         self.scroll_offset = 0;
+    }
+
+    pub fn append_thinking(&mut self, text: &str) {
+        self.thinking_buffer.push_str(text);
+    }
+
+    pub fn commit_thinking(&mut self) {
+        if !self.thinking_buffer.is_empty() {
+            self.messages.push(ChatLine::Thinking(std::mem::take(&mut self.thinking_buffer)));
+        }
     }
 
     pub fn append_stream(&mut self, text: &str) {
@@ -56,9 +70,9 @@ impl ChatPane {
     }
 
     pub fn add_tool_call(&mut self, name: &str) {
+        self.commit_thinking();
         if self.streaming && !self.stream_buffer.is_empty() {
-            self.messages.push(ChatLine::Assistant(self.stream_buffer.clone()));
-            self.stream_buffer.clear();
+            self.messages.push(ChatLine::Assistant(std::mem::take(&mut self.stream_buffer)));
         }
         self.messages.push(ChatLine::ToolCall(format!("Calling {name}...")));
         self.scroll_offset = 0;
@@ -71,9 +85,9 @@ impl ChatPane {
 
     pub fn finish_stream(&mut self) {
         if self.streaming {
+            self.commit_thinking();
             if !self.stream_buffer.is_empty() {
-                self.messages.push(ChatLine::Assistant(self.stream_buffer.clone()));
-                self.stream_buffer.clear();
+                self.messages.push(ChatLine::Assistant(std::mem::take(&mut self.stream_buffer)));
             }
             self.streaming = false;
         }
@@ -82,6 +96,7 @@ impl ChatPane {
 
     pub fn cancel_stream(&mut self) {
         if self.streaming {
+            self.thinking_buffer.clear();
             self.stream_buffer.clear();
             self.streaming = false;
         }
@@ -120,6 +135,14 @@ impl ChatPane {
                         Style::default().fg(Color::Cyan),
                     )));
                 }
+                ChatLine::Thinking(t) => {
+                    for line in t.lines() {
+                        lines.push(Line::from(Span::styled(
+                            format!("│ {line}"),
+                            Style::default().fg(Color::DarkGray),
+                        )));
+                    }
+                }
                 ChatLine::Assistant(t) => {
                     if t.is_empty() {
                         lines.push(Line::from(""));
@@ -147,11 +170,21 @@ impl ChatPane {
             }
         }
 
+        // Append the live thinking buffer at the bottom
+        if self.streaming && !self.thinking_buffer.is_empty() {
+            for line in self.thinking_buffer.lines() {
+                lines.push(Line::from(Span::styled(
+                    format!("│ {line}"),
+                    Style::default().fg(Color::DarkGray),
+                )));
+            }
+        }
+
         // Append the live streaming buffer at the bottom
         if self.streaming {
-            if self.stream_buffer.is_empty() {
+            if self.stream_buffer.is_empty() && self.thinking_buffer.is_empty() {
                 lines.push(Line::from(""));
-            } else {
+            } else if !self.stream_buffer.is_empty() {
                 for line in self.stream_buffer.lines() {
                     lines.push(Line::from(Span::styled(
                         line.to_string(),

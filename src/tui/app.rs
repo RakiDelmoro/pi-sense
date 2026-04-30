@@ -106,7 +106,11 @@ impl App {
 
     fn apply_stream_event(&mut self, event: AgentEvent) {
         match event {
-            AgentEvent::Chunk(text) => self.chat.append_stream(&text),
+            AgentEvent::ThinkingChunk(text) => self.chat.append_thinking(&text),
+            AgentEvent::Chunk(text) => {
+                self.chat.commit_thinking();
+                self.chat.append_stream(&text);
+            }
             AgentEvent::ToolCallStart(name) => self.chat.add_tool_call(&name),
             AgentEvent::ToolResult { name, result } => self.chat.add_tool_result(&name, &result),
             AgentEvent::Done => {

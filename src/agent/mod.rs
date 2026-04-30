@@ -38,6 +38,7 @@ pub struct FunctionCall {
 
 #[derive(Debug, Clone)]
 pub enum AgentEvent {
+    ThinkingChunk(String),
     Chunk(String),
     ToolCallStart(String),
     ToolResult { name: String, result: String },
@@ -227,6 +228,9 @@ impl Agent {
             let mut accumulated_text = String::new();
             while let Some(event) = llm_rx.recv().await {
                 match event {
+                    llm::StreamEvent::ThinkingChunk(text) => {
+                        let _ = tx.send(AgentEvent::ThinkingChunk(text)).await;
+                    }
                     llm::StreamEvent::TextChunk(text) => {
                         accumulated_text.push_str(&text);
                         let _ = tx.send(AgentEvent::Chunk(text)).await;
