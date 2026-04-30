@@ -2,8 +2,8 @@ use ratatui::{
     Frame,
     layout::Rect,
     style::{Color, Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    text::{Line, Span, Text},
+    widgets::{Block, Borders, Paragraph},
 };
 
 pub struct InputPane {
@@ -38,7 +38,6 @@ impl InputPane {
         if self.cursor == 0 {
             return;
         }
-        // Move back to the start of the previous UTF-8 character
         let mut pos = self.cursor.saturating_sub(1);
         while pos > 0 && !self.buffer.is_char_boundary(pos) {
             pos -= 1;
@@ -50,7 +49,6 @@ impl InputPane {
         if self.cursor >= self.buffer.len() {
             return;
         }
-        // Move forward to the end of the current UTF-8 character
         let mut pos = self.cursor + 1;
         while pos < self.buffer.len() && !self.buffer.is_char_boundary(pos) {
             pos += 1;
@@ -77,41 +75,51 @@ impl InputPane {
         let block = Block::default()
             .borders(Borders::TOP)
             .style(Style::default().fg(Color::DarkGray));
+        let inner = block.inner(area);
 
         if loading {
             let text = " > thinking...".to_string();
             let style = Style::default().fg(Color::Yellow).add_modifier(Modifier::SLOW_BLINK);
             let line = Line::from(Span::styled(text, style));
-            let paragraph = Paragraph::new(line)
-                .wrap(Wrap { trim: false })
-                .block(block);
-            f.render_widget(paragraph, area);
+            let para = Paragraph::new(line).block(block);
+            f.render_widget(para, area);
             return;
         }
 
-        let prefix = " > ";
+        // Build the full display string with a blinking "█" cursor.
         let before = &self.buffer[..self.cursor];
         let after = &self.buffer[self.cursor..];
+        let full = format!("{before}█{after}");
 
-        // Show a blinking block cursor at the insertion point.
-        // When the buffer is empty the cursor sits right after the prefix.
-        let spans = vec![
-            Span::styled(prefix, Style::default().fg(Color::White)),
-            Span::styled(before.to_string(), Style::default().fg(Color::White)),
-            Span::styled(
-                "█",
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::SLOW_BLINK),
-            ),
-            Span::styled(after.to_string(), Style::default().fg(Color::White)),
-        ];
+        // Character-wrap so the text never overflows the allocated width.
+        let width = inner.width as usize;
+        let max_lines = inner.height as usize;
+        let mut lines: Vec<String> = Vec::new();
+        let mut current = String::new();
+        for c in full.chars() {
+            if width > 0 && current.len() >= width {
+                lines.push(std::mem::take(&mut current));
+            }
+            current.push(c);
+        }
+        if !current.is_empty() {
+            lines.push(current);
+        }
 
-        let line = Line::from(spans);
-        let paragraph = Paragraph::new(line)
-            .wrap(Wrap { trim: false })
-            .block(block);
+        // Only keep the last N lines that fit in the area.
+        let total = lines.len();
+        let start = if total > max_lines && max_lines > 0 {
+            total - max_lines
+        } else {
+            0
+        };
+        let visible_lines = lines[start..]
+            .iter()
+            .map(|l| Line::from(Span::styled(l.as_str(), Style::default().fg(Color::White))))
+            .collect::<Vec<_>>();
 
+        let text = Text::from(visible_lines);
+        let paragraph = Paragraph::new(text).block(block);
         f.render_widget(paragraph, area);
     }
 }
