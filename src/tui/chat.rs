@@ -215,9 +215,16 @@ impl ChatPane {
             max_offset.saturating_sub(offset)
         };
 
-        let paragraph = Paragraph::new(lines)
-            .block(Block::default().borders(Borders::NONE))
-            .scroll((scroll, 0));
+        let start = scroll as usize;
+        let end = (start + height as usize).min(lines.len());
+        let visible = if start < lines.len() {
+            lines[start..end].to_vec()
+        } else {
+            vec![]
+        };
+
+        let paragraph = Paragraph::new(visible)
+            .block(Block::default().borders(Borders::NONE));
 
         f.render_widget(paragraph, area);
     }
