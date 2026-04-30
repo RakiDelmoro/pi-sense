@@ -184,6 +184,10 @@ impl App {
             }
             KeyCode::Char(c) => self.input.insert(c),
             KeyCode::Backspace => self.input.backspace(),
+            KeyCode::Left => self.input.cursor_left(),
+            KeyCode::Right => self.input.cursor_right(),
+            KeyCode::Home => self.input.cursor_home(),
+            KeyCode::End => self.input.cursor_end(),
             KeyCode::Up => self.chat.scroll_up(),
             KeyCode::Down => self.chat.scroll_down(),
             KeyCode::PageUp => self.chat.scroll_page_up(),
