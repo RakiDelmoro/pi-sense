@@ -6,6 +6,8 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
+const ACCENT: Color = Color::Rgb(100, 200, 255);
+
 pub struct InputPane {
     buffer: String,
     cursor: usize,
@@ -74,11 +76,12 @@ impl InputPane {
     pub fn draw(&self, f: &mut Frame, area: Rect, loading: bool) {
         let block = Block::default()
             .borders(Borders::TOP)
+            .border_style(Style::default().fg(ACCENT))
             .style(Style::default().fg(Color::DarkGray));
-        let inner = block.inner(area);
+        let _inner = block.inner(area);
 
         if loading {
-            let text = " > thinking...".to_string();
+            let text = " \u{25C6}  Waiting for response...".to_string();
             let style = Style::default().fg(Color::Yellow).add_modifier(Modifier::SLOW_BLINK);
             let line = Line::from(Span::styled(text, style));
             let para = Paragraph::new(line).block(block);
@@ -86,16 +89,16 @@ impl InputPane {
             return;
         }
 
-        // Build the full display string with a blinking "█" cursor.
         let before = &self.buffer[..self.cursor];
         let after = &self.buffer[self.cursor..];
-        let full = format!("{before}█{after}");
+        let prefix = " \u{25B8} ";
+        let full = format!("{prefix}{before}█{after}");
 
-        // Character-wrap so the text never overflows the allocated width.
-        let width = inner.width as usize;
-        let max_lines = inner.height as usize;
+        let width = area.width.saturating_sub(2) as usize;
+        let max_lines = area.height.saturating_sub(1) as usize;
         let mut lines: Vec<String> = Vec::new();
         let mut current = String::new();
+
         for c in full.chars() {
             if width > 0 && current.len() >= width {
                 lines.push(std::mem::take(&mut current));
@@ -106,17 +109,28 @@ impl InputPane {
             lines.push(current);
         }
 
-        // Only keep the last N lines that fit in the area.
         let total = lines.len();
         let start = if total > max_lines && max_lines > 0 {
             total - max_lines
         } else {
             0
         };
-        let visible_lines = lines[start..]
+        let visible_lines: Vec<Line> = lines[start..]
             .iter()
-            .map(|l| Line::from(Span::styled(l.as_str(), Style::default().fg(Color::White))))
-            .collect::<Vec<_>>();
+            .map(|l| {
+                if let Some(rest) = l.strip_prefix(prefix) {
+                    Line::from(vec![
+                        Span::styled(
+                            prefix,
+                            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(rest, Style::default().fg(Color::White)),
+                    ])
+                } else {
+                    Line::from(Span::styled(l.as_str(), Style::default().fg(Color::White)))
+                }
+            })
+            .collect();
 
         let text = Text::from(visible_lines);
         let paragraph = Paragraph::new(text).block(block);
