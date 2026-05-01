@@ -1,61 +1,99 @@
 const PiSenseWidgets = {
     renderText(container, sensor) {
+        const precision = sensor.display_precision || 1;
         container.innerHTML = `
             <div class="widget-text">
-                <span class="widget-text-value" id="val-${sensor.id}">--</span>
-                <span class="widget-text-unit">${sensor.unit}</span>
+                <span class="widget-text-value" id="val-${sensor.id}" data-precision="${precision}">--</span>
+                <span class="widget-text-unit">${sensor.unit || ''}</span>
             </div>
         `;
     },
 
     updateText(container, value, unit) {
         const valEl = container.querySelector('.widget-text-value');
-        if (valEl) valEl.textContent = value;
+        if (!valEl) return;
+        const precision = parseInt(valEl.dataset.precision) || 1;
+        const num = parseFloat(value);
+        valEl.textContent = isNaN(num) ? value : (Number.isInteger(num) ? num : num.toFixed(precision));
     },
 
     renderGauge(container, sensor) {
+        const min = sensor.gauge_min !== undefined ? sensor.gauge_min : 0;
+        const max = sensor.gauge_max !== undefined ? sensor.gauge_max : 100;
+        const colorLow = sensor.gauge_color_low || '#4caf50';
+        const colorMid = sensor.gauge_color_mid || '#4fc3f7';
+        const colorHigh = sensor.gauge_color_high || '#ef5350';
+        const threshLow = sensor.gauge_threshold_low !== undefined ? sensor.gauge_threshold_low : 30;
+        const threshHigh = sensor.gauge_threshold_high !== undefined ? sensor.gauge_threshold_high : 70;
+
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', '0 0 200 120');
         svg.setAttribute('class', 'gauge-svg');
+        svg.dataset.min = min;
+        svg.dataset.max = max;
+        svg.dataset.threshLow = threshLow;
+        svg.dataset.threshHigh = threshHigh;
+        svg.dataset.colorLow = colorLow;
+        svg.dataset.colorMid = colorMid;
+        svg.dataset.colorHigh = colorHigh;
+
         svg.innerHTML = `
             <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#2a2a3a" stroke-width="16" stroke-linecap="round"/>
-            <path id="gauge-arc-${sensor.id}" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#4fc3f7" stroke-width="16" stroke-linecap="round" stroke-dasharray="0 251"/>
+            <path id="gauge-arc-${sensor.id}" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="${colorMid}" stroke-width="16" stroke-linecap="round" stroke-dasharray="0 251"/>
             <text x="100" y="95" text-anchor="middle" fill="#e0e0e0" font-size="28" font-weight="bold" id="gauge-val-${sensor.id}">--</text>
-            <text x="100" y="112" text-anchor="middle" fill="#888" font-size="12" id="gauge-unit-${sensor.id}">${sensor.unit}</text>
+            <text x="100" y="112" text-anchor="middle" fill="#888" font-size="12" id="gauge-unit-${sensor.id}">${sensor.unit || ''}</text>
         `;
         container.appendChild(svg);
     },
 
     updateGauge(container, value, unit) {
+        const svg = container.querySelector('svg');
+        if (!svg) return;
+
+        const min = parseFloat(svg.dataset.min) || 0;
+        const max = parseFloat(svg.dataset.max) || 100;
+        const threshLow = parseFloat(svg.dataset.threshLow) || 30;
+        const threshHigh = parseFloat(svg.dataset.threshHigh) || 70;
+        const colorLow = svg.dataset.colorLow || '#4caf50';
+        const colorMid = svg.dataset.colorMid || '#4fc3f7';
+        const colorHigh = svg.dataset.colorHigh || '#ef5350';
+
         const num = parseFloat(value);
         if (isNaN(num)) return;
 
-        const card = container.closest('.sensor-card');
-        const min = 0;
-        const max = 100;
-        const pct = Math.max(0, Math.min(1, (num - min) / (max - min)));
+        const range = max - min;
+        const pct = Math.max(0, Math.min(1, (num - min) / range));
         const arcLength = 251;
         const filled = pct * arcLength;
 
         const arc = document.getElementById(container.id.replace('widget-', 'gauge-arc-'));
         if (arc) arc.setAttribute('stroke-dasharray', `${filled} ${arcLength - filled}`);
 
+        let color = colorMid;
+        if (pct * 100 <= threshLow) color = colorLow;
+        else if (pct * 100 >= threshHigh) color = colorHigh;
+        if (arc) arc.setAttribute('stroke', color);
+
         const valEl = document.getElementById(container.id.replace('widget-', 'gauge-val-'));
         if (valEl) valEl.textContent = Number.isInteger(num) ? num : num.toFixed(1);
-
-        const color = pct < 0.3 ? '#4caf50' : pct < 0.7 ? '#4fc3f7' : '#ef5350';
-        if (arc) arc.setAttribute('stroke', color);
     },
 
     renderSwitch(container, sensor) {
+        const payloadOn = sensor.publish_payload_on || '1';
+        const payloadOff = sensor.publish_payload_off || '0';
+        const canPublish = sensor.allow_publish && sensor.publish_topic;
+
         container.innerHTML = `
             <div class="widget-switch">
-                <div class="switch-track" id="switch-${sensor.id}">
+                <div class="switch-track${canPublish ? ' clickable' : ''}" id="switch-${sensor.id}">
                     <div class="switch-thumb"></div>
                 </div>
                 <span class="switch-label" id="switch-label-${sensor.id}">OFF</span>
             </div>
         `;
+        container.dataset.payloadOn = payloadOn;
+        container.dataset.payloadOff = payloadOff;
+        container.dataset.canPublish = canPublish ? 'true' : 'false';
     },
 
     updateSwitch(container, value) {
@@ -67,15 +105,23 @@ const PiSenseWidgets = {
     },
 
     renderChart(container, sensor) {
+        const color = sensor.chart_color || '#4fc3f7';
+        const maxPoints = sensor.chart_max_points || 120;
+
         const canvas = document.createElement('canvas');
         canvas.className = 'chart-canvas';
         canvas.id = 'chart-' + sensor.id;
+        canvas.dataset.color = color;
+        canvas.dataset.maxPoints = maxPoints;
         container.appendChild(canvas);
     },
 
     updateChart(container, history, unit) {
         const canvas = container.querySelector('.chart-canvas');
         if (!canvas) return;
+
+        const color = canvas.dataset.color || '#4fc3f7';
+        const maxPoints = parseInt(canvas.dataset.maxPoints) || 120;
 
         const ctx = canvas.getContext('2d');
         const rect = container.getBoundingClientRect();
@@ -88,7 +134,7 @@ const PiSenseWidgets = {
 
         ctx.clearRect(0, 0, w, h);
 
-        const values = history.map(p => parseFloat(p.value)).filter(v => !isNaN(v));
+        const values = history.slice(-maxPoints).map(p => parseFloat(p.value)).filter(v => !isNaN(v));
         if (values.length < 2) return;
 
         const min = Math.min(...values);
@@ -106,7 +152,7 @@ const PiSenseWidgets = {
         }
 
         ctx.beginPath();
-        ctx.strokeStyle = '#4fc3f7';
+        ctx.strokeStyle = color;
         ctx.lineWidth = 2;
         ctx.lineJoin = 'round';
 
@@ -121,7 +167,7 @@ const PiSenseWidgets = {
         ctx.fillStyle = '#888';
         ctx.font = '10px monospace';
         ctx.textAlign = 'right';
-        ctx.fillText(max.toFixed(1) + unit, w - 5, padding + 4);
-        ctx.fillText(min.toFixed(1) + unit, w - 5, h - padding + 12);
+        ctx.fillText(max.toFixed(1) + (unit || ''), w - 5, padding + 4);
+        ctx.fillText(min.toFixed(1) + (unit || ''), w - 5, h - padding + 12);
     }
 };

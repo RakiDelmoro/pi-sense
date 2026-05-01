@@ -48,10 +48,33 @@ body {
     border-radius: 12px;
     padding: 16px;
     transition: border-color 0.2s;
+    --card-accent: #4fc3f7;
 }
 
 .sensor-card:hover {
-    border-color: #4fc3f7;
+    border-color: var(--card-accent);
+}
+
+.sensor-card.card-small {
+    min-height: 120px;
+}
+
+.sensor-card.card-large {
+    min-height: 240px;
+}
+
+.sensor-card.card-alert {
+    animation: card-alert-pulse 1s ease-in-out infinite;
+    border-color: #ef5350;
+}
+
+@keyframes card-alert-pulse {
+    0%, 100% {
+        box-shadow: 0 0 8px rgba(239, 83, 80, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(239, 83, 80, 0.6);
+    }
 }
 
 .sensor-header {
