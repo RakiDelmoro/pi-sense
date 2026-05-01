@@ -3,6 +3,7 @@ mod config;
 mod mqtt;
 mod server;
 mod storage;
+mod transform;
 mod tui;
 
 use clap::{Parser, Subcommand};

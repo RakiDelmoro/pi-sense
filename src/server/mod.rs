@@ -2,6 +2,7 @@ use crate::config::Config;
 use crate::agent::Agent;
 use crate::mqtt::{MqttManager, SensorReading};
 use crate::storage::Db;
+use crate::transform;
 use axum::{
     Router,
     extract::{State, WebSocketUpgrade, ws::{Message, WebSocket}},
@@ -31,8 +32,12 @@ pub enum DashboardMessage {
     WidgetAdd { sensor: crate::storage::Sensor },
     #[serde(rename = "widget:remove")]
     WidgetRemove { id: String },
+    #[serde(rename = "widget:update")]
+    WidgetUpdate { sensor: crate::storage::Sensor },
     #[serde(rename = "value:update")]
-    ValueUpdate { sensor_id: String, value: String, timestamp: i64 },
+    ValueUpdate { sensor_id: String, value: String, timestamp: i64, alert: bool },
+    #[serde(rename = "history:data")]
+    HistoryData { sensor_id: String, readings: Vec<crate::storage::SensorReadingRecord> },
 }
 
 pub async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -52,7 +57,8 @@ pub async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error + Sen
 
     let mqtt_rx = mqtt.subscribe_rx();
     let dashboard_tx_clone = dashboard_tx.clone();
-    tokio::spawn(mqtt_to_dashboard(mqtt_rx, dashboard_tx_clone));
+    let db_clone = db.clone();
+    tokio::spawn(mqtt_to_dashboard(mqtt_rx, dashboard_tx_clone, db_clone));
 
     restore_mqtt_subscriptions(&db, &mqtt).await;
 
@@ -76,14 +82,62 @@ pub async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error + Sen
 async fn mqtt_to_dashboard(
     mut rx: broadcast::Receiver<SensorReading>,
     tx: broadcast::Sender<DashboardMessage>,
+    db: Arc<Db>,
 ) {
     loop {
         match rx.recv().await {
             Ok(reading) => {
+                let sensor_id = reading.sensor_id.clone();
+                let timestamp = reading.timestamp;
+
+                // Get sensor config from DB for transform/alert settings
+                let sensor = match db.get_sensor(&sensor_id) {
+                    Ok(Some(s)) => s,
+                    Ok(None) => {
+                        log::warn!("sensor not found for id: {}", sensor_id);
+                        continue;
+                    }
+                    Err(e) => {
+                        log::warn!("db error getting sensor: {}", e);
+                        continue;
+                    }
+                };
+
+                // Apply value transformation
+                let mut display_value = reading.value.clone();
+                let mut numeric_value: Option<f64> = reading.value.parse().ok();
+
+                if let Some(ref transform_expr) = sensor.value_transform {
+                    if let Some(raw) = numeric_value {
+                        if let Some(transformed) = transform::evaluate_transform(transform_expr, raw) {
+                            display_value = format!("{:.1$}", transformed, sensor.display_precision as usize);
+                            numeric_value = Some(transformed);
+                        }
+                    }
+                }
+
+                // Check alert thresholds
+                let alert = if let Some(v) = numeric_value {
+                    v < sensor.alert_min || v > sensor.alert_max
+                } else {
+                    false
+                };
+
+                // Store reading in DB for history
+                if let Err(e) = db.insert_reading(&sensor_id, &display_value, timestamp) {
+                    log::warn!("failed to store reading: {}", e);
+                }
+
+                // Prune old readings
+                if let Err(e) = db.prune_readings(&sensor_id, sensor.chart_max_points as i64) {
+                    log::warn!("failed to prune readings: {}", e);
+                }
+
                 let msg = DashboardMessage::ValueUpdate {
-                    sensor_id: reading.sensor_id,
-                    value: reading.value,
-                    timestamp: reading.timestamp,
+                    sensor_id,
+                    value: display_value,
+                    timestamp,
+                    alert,
                 };
                 let _ = tx.send(msg);
             }
@@ -133,9 +187,24 @@ async fn handle_ws(mut socket: WebSocket, state: State<AppState>) {
     let mut rx = state.dashboard_tx.subscribe();
 
     if let Ok(sensors) = state.db.list_sensors() {
-        let msg = DashboardMessage::StateFull { sensors };
+        let msg = DashboardMessage::StateFull { sensors: sensors.clone() };
         let json = serde_json::to_string(&msg).unwrap_or_default();
         let _ = socket.send(Message::Text(json.into())).await;
+
+        for sensor in &sensors {
+            if sensor.widget_type == "chart" {
+                if let Ok(readings) = state.db.get_readings(&sensor.id, sensor.chart_max_points as i64) {
+                    if !readings.is_empty() {
+                        let hist_msg = DashboardMessage::HistoryData {
+                            sensor_id: sensor.id.clone(),
+                            readings,
+                        };
+                        let json = serde_json::to_string(&hist_msg).unwrap_or_default();
+                        let _ = socket.send(Message::Text(json.into())).await;
+                    }
+                }
+            }
+        }
     }
 
     loop {
@@ -153,10 +222,75 @@ async fn handle_ws(mut socket: WebSocket, state: State<AppState>) {
             }
             incoming = socket.recv() => {
                 match incoming {
+                    Some(Ok(Message::Text(text))) => {
+                        if let Err(e) = handle_incoming_ws(&text, &state).await {
+                            log::warn!("WS incoming error: {}", e);
+                        }
+                    }
                     Some(Ok(Message::Close(_))) | None => break,
                     _ => {}
                 }
             }
         }
     }
+}
+
+async fn handle_incoming_ws(text: &str, state: &State<AppState>) -> Result<(), String> {
+    let msg: serde_json::Value = serde_json::from_str(text)
+        .map_err(|e| format!("parse error: {}", e))?;
+
+    let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+    if msg_type == "sensor:publish" {
+        let sensor_id = msg.get("sensor_id").and_then(|v| v.as_str()).unwrap_or("");
+        let value = msg.get("value").and_then(|v| v.as_str()).unwrap_or("");
+
+        if sensor_id.is_empty() || value.is_empty() {
+            return Err("sensor:publish missing sensor_id or value".into());
+        }
+
+        let sensor = match state.db.get_sensor(sensor_id) {
+            Ok(Some(s)) => s,
+            Ok(None) => return Err(format!("sensor not found: {}", sensor_id)),
+            Err(e) => return Err(format!("db error: {}", e)),
+        };
+
+        if !sensor.allow_publish {
+            return Err(format!("sensor {} does not allow publishing", sensor_id));
+        }
+
+        let publish_topic = match sensor.publish_topic {
+            Some(t) => t,
+            None => return Err(format!("sensor {} has no publish_topic", sensor_id)),
+        };
+
+        let payload = if value == "1" || value.to_lowercase() == "on" || value.to_lowercase() == "true" {
+            sensor.publish_payload_on.clone()
+        } else {
+            sensor.publish_payload_off.clone()
+        };
+
+        state.mqtt.publish(
+            publish_topic.clone(),
+            sensor.broker.clone(),
+            sensor.broker_port,
+            payload.clone()
+        ).await.map_err(|e| format!("publish failed: {}", e))?;
+
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        let _ = state.dashboard_tx.send(DashboardMessage::ValueUpdate {
+            sensor_id: sensor.id.clone(),
+            value: value.to_string(),
+            timestamp,
+            alert: false,
+        });
+
+        log::info!("WS published '{}' to {}", payload, publish_topic);
+    }
+
+    Ok(())
 }

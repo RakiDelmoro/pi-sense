@@ -22,6 +22,7 @@ pub struct MqttManager {
     brokers: Arc<Mutex<HashMap<String, BrokerHandle>>>,
     tx: broadcast::Sender<SensorReading>,
     client_id_base: String,
+    topic_to_sensor: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl MqttManager {
@@ -31,6 +32,7 @@ impl MqttManager {
             brokers: Arc::new(Mutex::new(HashMap::new())),
             tx,
             client_id_base,
+            topic_to_sensor: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -38,9 +40,14 @@ impl MqttManager {
         self.tx.subscribe()
     }
 
-    pub async fn subscribe(&self, _sensor_id: String, topic: String, broker: String, broker_port: u16) -> Result<(), String> {
+    pub async fn subscribe(&self, sensor_id: String, topic: String, broker: String, broker_port: u16) -> Result<(), String> {
         let broker_key = format!("{broker}:{broker_port}");
         let mut brokers = self.brokers.lock().await;
+
+        {
+            let mut map = self.topic_to_sensor.lock().await;
+            map.insert(topic.clone(), sensor_id.clone());
+        }
 
         if let Some(handle) = brokers.get_mut(&broker_key) {
             if !handle.subscribed_topics.contains(&topic) {
@@ -70,7 +77,7 @@ impl MqttManager {
             subscribed_topics: vec![topic.clone()],
         };
 
-        brokers.insert(broker_key, handle);
+        brokers.insert(broker_key.clone(), handle);
 
         drop(brokers);
         self.spawn_event_loop(broker, broker_port);
@@ -81,6 +88,11 @@ impl MqttManager {
     pub async fn unsubscribe(&self, topic: &str, broker: &str, broker_port: u16) -> Result<(), String> {
         let broker_key = format!("{broker}:{broker_port}");
         let mut brokers = self.brokers.lock().await;
+
+        {
+            let mut map = self.topic_to_sensor.lock().await;
+            map.remove(topic);
+        }
 
         if let Some(handle) = brokers.get_mut(&broker_key) {
             handle
@@ -98,9 +110,23 @@ impl MqttManager {
         Ok(())
     }
 
+    pub async fn publish(&self, topic: String, broker: String, broker_port: u16, payload: String) -> Result<(), String> {
+        let broker_key = format!("{broker}:{broker_port}");
+        let brokers = self.brokers.lock().await;
+
+        let handle = brokers.get(&broker_key)
+            .ok_or_else(|| format!("No MQTT connection to {broker_key}"))?;
+
+        handle.client
+            .publish(&topic, QoS::AtLeastOnce, false, payload)
+            .await
+            .map_err(|e| format!("mqtt publish error: {e}"))
+    }
+
     fn spawn_event_loop(&self, broker: String, broker_port: u16) {
         let brokers = self.brokers.clone();
         let tx = self.tx.clone();
+        let topic_map = self.topic_to_sensor.clone();
 
         tokio::spawn(async move {
             let broker_key = format!("{broker}:{broker_port}");
@@ -127,8 +153,14 @@ impl MqttManager {
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
                                 .as_secs() as i64;
+
+                            let sensor_id = {
+                                let map = topic_map.lock().await;
+                                map.get(&publish.topic).cloned().unwrap_or_default()
+                            };
+
                             let reading = SensorReading {
-                                sensor_id: String::new(),
+                                sensor_id,
                                 topic: publish.topic.clone(),
                                 value: payload,
                                 timestamp,
