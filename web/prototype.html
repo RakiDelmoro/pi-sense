@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PiSense Dashboard - Prototype</title>
+    <link rel="stylesheet" href="/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        #app-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 20px 16px;
+            border-bottom: 1px solid #21262d;
+            background: #0d1117;
+        }
+
+        #app-header h1 {
+            font-family: 'Press Start 2P', monospace;
+            font-size: 18px;
+            font-weight: 400;
+            color: #ffffff;
+            text-shadow: 2px 2px 0 #4fc3f7;
+            letter-spacing: 1px;
+        }
+
+        #connection-status {
+            font-size: 12px;
+        }
+
+        #connection-status.connected {
+            color: #4caf50;
+        }
+
+        #connection-status.disconnected {
+            color: #ef5350;
+        }
+
+        #connection-status.reconnecting {
+            color: #ff9800;
+        }
+    </style>
+</head>
+<body>
+    <header id="app-header">
+        <h1>PiSense Dashboard</h1>
+        <span id="connection-status" class="connected">●</span>
+    </header>
+
+    <div id="dashboard">
+        <div class="sensor-card" style="--card-accent: #4fc3f7;">
+            <div class="sensor-header">
+                <span class="sensor-name">Living Room Temperature</span>
+                <span class="sensor-meta">mqtt.local · sensors/living/temp</span>
+            </div>
+            <div class="sensor-value-container">
+                <div class="sensor-widget">
+                    <div class="widget-text">
+                        <span class="widget-text-value">23.5</span>
+                        <span class="widget-text-unit">°C</span>
+                    </div>
+                </div>
+            </div>
+            <div class="sensor-timestamp">2s ago</div>
+        </div>
+
+        <div class="sensor-card" style="--card-accent: #81c784;">
+            <div class="sensor-header">
+                <span class="sensor-name">Kitchen Humidity</span>
+                <span class="sensor-meta">mqtt.local · sensors/kitchen/humidity</span>
+            </div>
+            <div class="sensor-value-container">
+                <div class="sensor-widget">
+                    <div class="widget-text">
+                        <span class="widget-text-value">58</span>
+                        <span class="widget-text-unit">%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="sensor-timestamp">5s ago</div>
+        </div>
+
+        <div class="sensor-card card-alert" style="--card-accent: #ef5350;">
+            <div class="sensor-header">
+                <span class="sensor-name">Garage Door</span>
+                <span class="sensor-meta">mqtt.local · sensors/garage/door</span>
+            </div>
+            <div class="sensor-value-container">
+                <div class="sensor-widget">
+                    <div class="widget-switch">
+                        <div class="switch-track active">
+                            <div class="switch-thumb"></div>
+                        </div>
+                        <span class="switch-label">Open</span>
+                    </div>
+                </div>
+            </div>
+            <div class="sensor-timestamp">12s ago</div>
+        </div>
+
+        <div class="sensor-card card-large" style="--card-accent: #ffb74d;">
+            <div class="sensor-header">
+                <span class="sensor-name">Power Usage</span>
+                <span class="sensor-meta">mqtt.local · sensors/house/power</span>
+            </div>
+            <div class="sensor-value-container">
+                <div class="sensor-widget">
+                    <svg class="gauge-svg" viewBox="0 0 200 120">
+                        <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#21262d" stroke-width="16" stroke-linecap="round"/>
+                        <path d="M 20 100 A 80 80 0 0 1 155 55" fill="none" stroke="#ffb74d" stroke-width="16" stroke-linecap="round"/>
+                        <text x="100" y="95" text-anchor="middle" fill="#e0e0e0" font-size="24" font-weight="700">847</text>
+                        <text x="100" y="115" text-anchor="middle" fill="#666" font-size="12">Watts</text>
+                    </svg>
+                </div>
+            </div>
+            <div class="sensor-timestamp">1m ago</div>
+        </div>
+    </div>
+
+    <div id="empty-state">
+        <p>No sensors configured</p>
+        <p class="hint">Use the TUI to add sensors: <code>pi-sense tui</code></p>
+    </div>
+
+    <script src="/widgets.js"></script>
+    <script src="/dashboard.js"></script>
+</body>
+</html>
