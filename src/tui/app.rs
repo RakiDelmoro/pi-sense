@@ -94,8 +94,8 @@ impl App {
                             break;
                         }
                         Err(mpsc::error::TryRecvError::Disconnected) => {
+                            events.push(AgentEvent::Done);
                             self.loading = false;
-                            self.chat.finish_stream();
                             break;
                         }
                     }
