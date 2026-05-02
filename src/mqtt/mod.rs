@@ -22,7 +22,25 @@ pub struct MqttManager {
     brokers: Arc<Mutex<HashMap<String, BrokerHandle>>>,
     tx: broadcast::Sender<SensorReading>,
     client_id_base: String,
-    topic_to_sensor: Arc<Mutex<HashMap<String, String>>>,
+    topic_to_sensor: Arc<Mutex<HashMap<(String, String), String>>>,
+}
+
+fn topic_matches(pattern: &str, topic: &str) -> bool {
+    let pattern_parts: Vec<&str> = pattern.split('/').collect();
+    let topic_parts: Vec<&str> = topic.split('/').collect();
+
+    for (i, part) in pattern_parts.iter().enumerate() {
+        if *part == "#" {
+            return i <= topic_parts.len();
+        }
+        if *part == "+" {
+            continue;
+        }
+        if i >= topic_parts.len() || *part != topic_parts[i] {
+            return false;
+        }
+    }
+    pattern_parts.len() == topic_parts.len()
 }
 
 impl MqttManager {
@@ -46,7 +64,7 @@ impl MqttManager {
 
         {
             let mut map = self.topic_to_sensor.lock().await;
-            map.insert(topic.clone(), sensor_id.clone());
+            map.insert((broker_key.clone(), topic.clone()), sensor_id.clone());
         }
 
         if let Some(handle) = brokers.get_mut(&broker_key) {
@@ -91,7 +109,7 @@ impl MqttManager {
 
         {
             let mut map = self.topic_to_sensor.lock().await;
-            map.remove(topic);
+            map.remove(&(broker_key.clone(), topic.to_string()));
         }
 
         if let Some(handle) = brokers.get_mut(&broker_key) {
@@ -156,7 +174,10 @@ impl MqttManager {
 
                             let sensor_id = {
                                 let map = topic_map.lock().await;
-                                map.get(&publish.topic).cloned().unwrap_or_default()
+                                map.iter()
+                                    .find(|((bk, pattern), _)| bk == &broker_key && topic_matches(pattern, &publish.topic))
+                                    .map(|(_, sid)| sid.clone())
+                                    .unwrap_or_default()
                             };
 
                             let reading = SensorReading {

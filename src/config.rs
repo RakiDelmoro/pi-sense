@@ -32,10 +32,6 @@ pub struct LlmConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MqttConfig {
-    #[serde(default = "default_broker")]
-    pub default_broker: String,
-    #[serde(default = "default_mqtt_port")]
-    pub default_port: u16,
     #[serde(default = "default_client_id")]
     pub client_id: String,
 }
@@ -46,15 +42,11 @@ fn default_server() -> ServerConfig {
 
 fn default_mqtt() -> MqttConfig {
     MqttConfig {
-        default_broker: default_broker(),
-        default_port: default_mqtt_port(),
         client_id: default_client_id(),
     }
 }
 
 fn default_port() -> u16 { 9733 }
-fn default_broker() -> String { "localhost".into() }
-fn default_mqtt_port() -> u16 { 1883 }
 fn default_client_id() -> String { "pi-sense".into() }
 fn default_db_path() -> String { "pi-sense.db".into() }
 fn default_model_for_config() -> String { String::new() }
@@ -78,6 +70,7 @@ pub fn provider_api_base(provider: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 pub fn provider_models_url(provider: &str) -> String {
     match provider {
         "ppq" => "https://api.ppq.ai/v1/models".into(),
@@ -85,6 +78,7 @@ pub fn provider_models_url(provider: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 pub const PROVIDERS: &[&str] = &["PPQ", "TogetherAI", "OpenRouter"];
 
 impl Default for Config {
@@ -153,6 +147,7 @@ impl Config {
     }
 }
 
+#[allow(dead_code)]
 pub async fn fetch_models(provider: &str, api_key: &str) -> Result<Vec<String>, String> {
     let url = provider_models_url(provider);
     let resp = reqwest::Client::new()

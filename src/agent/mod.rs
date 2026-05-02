@@ -1,5 +1,5 @@
 use crate::config::Config;
-use crate::storage::Db;
+use crate::store::Store;
 use crate::mqtt::MqttManager;
 use crate::agent::llm::LlmClient;
 use crate::agent::tools::ToolExecutor;
@@ -37,6 +37,7 @@ pub struct FunctionCall {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum AgentEvent {
     ThinkingChunk(String),
     Chunk(String),
@@ -47,12 +48,14 @@ pub enum AgentEvent {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct AgentResponse {
     pub text: String,
     pub tool_results: Vec<ToolResult>,
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct ToolResult {
     pub name: String,
     pub result: String,
@@ -66,8 +69,7 @@ pub struct Agent {
 }
 
 impl Agent {
-    pub fn new(config: Config, db: Arc<Db>, mqtt: Arc<MqttManager>, dashboard_tx: broadcast::Sender<DashboardMessage>) -> Self {
-        let default_broker = config.mqtt.default_broker.clone();
+    pub fn new(config: Config, store: Arc<Store>, mqtt: Arc<MqttManager>, dashboard_tx: broadcast::Sender<DashboardMessage>) -> Self {
         let llm = config.llm.as_ref().map(|llm| {
             LlmClient::new(
                 config.llm_api_base().unwrap_or_default(),
@@ -77,8 +79,7 @@ impl Agent {
         });
         Self {
             llm,
-            tool_executor: ToolExecutor::new(db, mqtt)
-                .with_default_broker(default_broker)
+            tool_executor: ToolExecutor::new(store, mqtt)
                 .with_dashboard_tx(dashboard_tx),
             history: Vec::new(),
             config,
@@ -101,6 +102,7 @@ impl Agent {
         self.llm.is_some()
     }
 
+    #[allow(dead_code)]
     pub async fn run_prompt(&mut self, user_prompt: &str) -> Result<AgentResponse, Box<dyn std::error::Error + Send + Sync>> {
         let llm = match &self.llm {
             Some(l) => l,

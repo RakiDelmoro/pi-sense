@@ -1,13 +1,14 @@
 const WS_URL = `ws://${location.host}/ws`;
 let ws;
 let reconnectTimer;
-const historyStore = {};
+const sensorData = {};
 
 function connect() {
     ws = new WebSocket(WS_URL);
 
     ws.onopen = () => {
         clearTimeout(reconnectTimer);
+        document.getElementById('connection-status').className = 'connected';
     };
 
     ws.onmessage = (event) => {
@@ -16,10 +17,12 @@ function connect() {
     };
 
     ws.onclose = () => {
+        document.getElementById('connection-status').className = 'disconnected';
         reconnectTimer = setTimeout(connect, 3000);
     };
 
     ws.onerror = () => {
+        document.getElementById('connection-status').className = 'disconnected';
         ws.close();
     };
 }
@@ -67,13 +70,15 @@ function addWidget(sensor) {
 
     const dashboard = document.getElementById('dashboard');
 
-    let existing = document.getElementById('sensor-' + sensor.id);
+    let existing = document.getElementById('sensor-' + sensor.name);
     if (existing) existing.remove();
+
+    sensorData[sensor.name] = sensor;
 
     const card = document.createElement('div');
     card.className = 'sensor-card';
-    card.id = 'sensor-' + sensor.id;
-    card.dataset.sensorId = sensor.id;
+    card.id = 'sensor-' + sensor.name;
+    card.dataset.sensorName = sensor.name;
     card.dataset.widgetType = sensor.widget_type;
     card.dataset.unit = sensor.unit || '';
     card.dataset.topic = sensor.topic;
@@ -83,25 +88,37 @@ function addWidget(sensor) {
     card.dataset.alertMin = sensor.alert_min !== undefined ? sensor.alert_min : '';
     card.dataset.alertMax = sensor.alert_max !== undefined ? sensor.alert_max : '';
     card.dataset.lastValue = '';
+    card.dataset.chartColor = sensor.chart_color || '#4fc3f7';
 
-    // Card accent color
     if (sensor.card_accent) {
         card.style.setProperty('--card-accent', sensor.card_accent);
         card.style.borderColor = sensor.card_accent;
     }
 
-    // Card size
     if (sensor.card_size && sensor.card_size !== 'medium') {
         card.classList.add('card-' + sensor.card_size);
     }
 
     const header = document.createElement('div');
     header.className = 'sensor-header';
-    const metaStyle = sensor.show_meta === false ? 'display:none' : '';
-    header.innerHTML = `
+
+    const headerLeft = document.createElement('div');
+    headerLeft.className = 'sensor-header-left';
+    headerLeft.innerHTML = `
         <span class="sensor-name">${sensor.name}</span>
-        <span class="sensor-meta" style="${metaStyle}">${sensor.broker} · ${sensor.topic}</span>
+        <span class="sensor-meta">${sensor.broker} · ${sensor.topic}</span>
     `;
+    header.appendChild(headerLeft);
+
+    if (sensor.history_chart) {
+        const chartBtn = document.createElement('button');
+        chartBtn.className = 'chart-icon-btn';
+        chartBtn.innerHTML = '&#x1F4C8;';
+        chartBtn.title = 'View history';
+        chartBtn.addEventListener('click', () => openChartOverlay(sensor.name));
+        header.appendChild(chartBtn);
+    }
+
     card.appendChild(header);
 
     const valueContainer = document.createElement('div');
@@ -109,7 +126,7 @@ function addWidget(sensor) {
 
     const widgetArea = document.createElement('div');
     widgetArea.className = 'sensor-widget';
-    widgetArea.id = 'widget-' + sensor.id;
+    widgetArea.id = 'widget-' + sensor.name;
 
     switch (sensor.widget_type) {
         case 'gauge':
@@ -119,9 +136,6 @@ function addWidget(sensor) {
             PiSenseWidgets.renderSwitch(widgetArea, sensor);
             setupSwitchClick(widgetArea, sensor);
             break;
-        case 'chart':
-            PiSenseWidgets.renderChart(widgetArea, sensor);
-            break;
         default:
             PiSenseWidgets.renderText(widgetArea, sensor);
     }
@@ -130,27 +144,12 @@ function addWidget(sensor) {
 
     const timestamp = document.createElement('div');
     timestamp.className = 'sensor-timestamp';
-    timestamp.id = 'ts-' + sensor.id;
+    timestamp.id = 'ts-' + sensor.name;
     timestamp.textContent = 'waiting for data...';
 
     card.appendChild(valueContainer);
     card.appendChild(timestamp);
     dashboard.appendChild(card);
-
-    // Initialize history for chart widgets
-    if (sensor.widget_type === 'chart') {
-        const key = 'pi-sense-history-' + sensor.id;
-        const stored = localStorage.getItem(key);
-        if (stored) {
-            try {
-                const history = JSON.parse(stored);
-                historyStore[sensor.id] = history;
-                PiSenseWidgets.updateChart(widgetArea, history, sensor.unit || '');
-            } catch (e) {}
-        } else {
-            historyStore[sensor.id] = [];
-        }
-    }
 }
 
 function setupSwitchClick(widgetArea, sensor) {
@@ -165,43 +164,54 @@ function setupSwitchClick(widgetArea, sensor) {
 
         ws.send(JSON.stringify({
             type: 'sensor:publish',
-            sensor_id: sensor.id,
+            sensor_id: sensor.name,
             value: newValue
         }));
     });
 }
 
 function updateWidget(sensor) {
-    const card = document.getElementById('sensor-' + sensor.id);
+    const card = document.getElementById('sensor-' + sensor.name);
     if (!card) return;
 
-    // Update sensor data attributes
+    sensorData[sensor.name] = sensor;
+
     card.dataset.unit = sensor.unit || '';
     card.dataset.allowPublish = sensor.allow_publish ? 'true' : 'false';
     card.dataset.publishTopic = sensor.publish_topic || '';
     card.dataset.alertMin = sensor.alert_min !== undefined ? sensor.alert_min : '';
     card.dataset.alertMax = sensor.alert_max !== undefined ? sensor.alert_max : '';
+    card.dataset.chartColor = sensor.chart_color || '#4fc3f7';
 
-    // Update accent
     if (sensor.card_accent) {
         card.style.setProperty('--card-accent', sensor.card_accent);
         card.style.borderColor = sensor.card_accent;
     }
 
-    // Update card size class
     card.classList.remove('card-small', 'card-large');
     if (sensor.card_size && sensor.card_size !== 'medium') {
         card.classList.add('card-' + sensor.card_size);
     }
 
-    // Update header
     const header = card.querySelector('.sensor-header');
-    header.innerHTML = `
+    const headerLeft = header.querySelector('.sensor-header-left');
+    headerLeft.innerHTML = `
         <span class="sensor-name">${sensor.name}</span>
         <span class="sensor-meta">${sensor.broker} · ${sensor.topic}</span>
     `;
 
-    // Re-render widget if type changed
+    let chartBtn = header.querySelector('.chart-icon-btn');
+    if (sensor.history_chart && !chartBtn) {
+        chartBtn = document.createElement('button');
+        chartBtn.className = 'chart-icon-btn';
+        chartBtn.innerHTML = '&#x1F4C8;';
+        chartBtn.title = 'View history';
+        chartBtn.addEventListener('click', () => openChartOverlay(sensor.name));
+        header.appendChild(chartBtn);
+    } else if (!sensor.history_chart && chartBtn) {
+        chartBtn.remove();
+    }
+
     const widgetArea = card.querySelector('.sensor-widget');
     widgetArea.innerHTML = '';
 
@@ -213,22 +223,20 @@ function updateWidget(sensor) {
             PiSenseWidgets.renderSwitch(widgetArea, sensor);
             setupSwitchClick(widgetArea, sensor);
             break;
-        case 'chart':
-            PiSenseWidgets.renderChart(widgetArea, sensor);
-            break;
         default:
             PiSenseWidgets.renderText(widgetArea, sensor);
     }
+
+    const lastValue = card.dataset.lastValue;
+    if (lastValue) {
+        updateValue(sensor.name, lastValue, Math.floor(Date.now() / 1000), false);
+    }
 }
 
-function removeWidget(id) {
-    const el = document.getElementById('sensor-' + id);
-    if (el) {
-        el.remove();
-        const historyKey = 'pi-sense-history-' + id;
-        localStorage.removeItem(historyKey);
-        delete historyStore[id];
-    }
+function removeWidget(name) {
+    const el = document.getElementById('sensor-' + name);
+    if (el) el.remove();
+    delete sensorData[name];
 
     const dashboard = document.getElementById('dashboard');
     if (dashboard.children.length === 0) {
@@ -236,42 +244,52 @@ function removeWidget(id) {
     }
 }
 
-function handleHistoryData(sensorId, readings) {
-    const history = readings.reverse().map(r => ({ value: r.value, timestamp: r.timestamp }));
-    historyStore[sensorId] = history;
-    localStorage.setItem('pi-sense-history-' + sensorId, JSON.stringify(history));
-
-    const card = document.getElementById('sensor-' + sensorId);
-    if (!card) return;
-
-    const widgetArea = document.getElementById('widget-' + sensorId);
-    if (card.dataset.widgetType === 'chart') {
-        const unit = card.dataset.unit;
-        PiSenseWidgets.updateChart(widgetArea, history, unit);
+function handleHistoryData(sensorName, readings) {
+    if (chartOverlaySensor === sensorName) {
+        const sensor = sensorData[sensorName];
+        const color = sensor ? (sensor.chart_color || '#4fc3f7') : '#4fc3f7';
+        requestAnimationFrame(() => {
+            PiSenseWidgets.renderChartOverlay(sensor || { name: sensorName, unit: '' }, readings, color);
+        });
     }
 }
 
-function updateValue(sensorId, value, timestamp, alert) {
-    const card = document.getElementById('sensor-' + sensorId);
+let chartOverlaySensor = null;
+
+function openChartOverlay(sensorName) {
+    chartOverlaySensor = sensorName;
+    const overlay = document.getElementById('chart-overlay');
+    overlay.classList.remove('hidden');
+
+    ws.send(JSON.stringify({
+        type: 'history:request',
+        sensor_id: sensorName
+    }));
+}
+
+function closeChartOverlay() {
+    const overlay = document.getElementById('chart-overlay');
+    overlay.classList.add('hidden');
+    chartOverlaySensor = null;
+}
+
+document.getElementById('chart-overlay-close').addEventListener('click', closeChartOverlay);
+document.getElementById('chart-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'chart-overlay') closeChartOverlay();
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeChartOverlay();
+});
+
+function updateValue(sensorName, value, timestamp, alert) {
+    const card = document.getElementById('sensor-' + sensorName);
     if (!card) return;
 
     card.dataset.lastValue = value;
 
     const widgetType = card.dataset.widgetType;
     const unit = card.dataset.unit;
-    const widgetArea = document.getElementById('widget-' + sensorId);
-
-    // Update history for charts
-    if (widgetType === 'chart') {
-        if (!historyStore[sensorId]) historyStore[sensorId] = [];
-        historyStore[sensorId].push({ value, timestamp });
-        const maxPoints = 120;
-        if (historyStore[sensorId].length > maxPoints) {
-            historyStore[sensorId] = historyStore[sensorId].slice(-maxPoints);
-        }
-        localStorage.setItem('pi-sense-history-' + sensorId, JSON.stringify(historyStore[sensorId]));
-        PiSenseWidgets.updateChart(widgetArea, historyStore[sensorId], unit);
-    }
+    const widgetArea = document.getElementById('widget-' + sensorName);
 
     switch (widgetType) {
         case 'gauge':
@@ -280,17 +298,14 @@ function updateValue(sensorId, value, timestamp, alert) {
         case 'switch':
             PiSenseWidgets.updateSwitch(widgetArea, value);
             break;
-        case 'chart':
-            break;
         default:
             PiSenseWidgets.updateText(widgetArea, value, unit);
     }
 
-    // Handle alert
     const hasAlert = alert === true || alert === 'true';
     card.classList.toggle('card-alert', hasAlert);
 
-    const tsEl = document.getElementById('ts-' + sensorId);
+    const tsEl = document.getElementById('ts-' + sensorName);
     if (tsEl) {
         tsEl.textContent = formatTimeAgo(timestamp);
     }

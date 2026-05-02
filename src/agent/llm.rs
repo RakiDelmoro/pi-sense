@@ -3,16 +3,19 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct LlmResponse {
     pub choices: Vec<LlmChoice>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct LlmChoice {
     pub message: LlmMessage,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct LlmMessage {
     pub role: String,
     pub content: Option<String>,
@@ -35,6 +38,7 @@ pub struct ToolFunc {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum StreamEvent {
     ThinkingChunk(String),
     TextChunk(String),
@@ -76,6 +80,7 @@ impl LlmClient {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn chat(
         &self,
         messages: &[ChatMessage],

@@ -7,10 +7,26 @@
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+    <header id="app-header">
+        <h1>PiSense Dashboard</h1>
+        <span id="connection-status">●</span>
+    </header>
     <div id="dashboard"></div>
     <div id="empty-state">
         <p>No sensors configured</p>
-        <p class="hint">Use the TUI to add sensors: <code>pi-sense tui</code></p>
+        <p class="hint">Use the REPL to add sensors: <code>pi-sense repl</code></p>
+    </div>
+    <div id="chart-overlay" class="chart-overlay hidden">
+        <div class="chart-overlay-content">
+            <div class="chart-overlay-header">
+                <span class="chart-overlay-title" id="chart-overlay-title"></span>
+                <button class="chart-overlay-close" id="chart-overlay-close">&times;</button>
+            </div>
+            <div class="chart-overlay-body">
+                <canvas id="chart-overlay-canvas"></canvas>
+                <div id="chart-tooltip" class="chart-tooltip hidden"></div>
+            </div>
+        </div>
     </div>
     <script src="/widgets.js"></script>
     <script src="/dashboard.js"></script>

@@ -1,0 +1,27 @@
+mqtt_broker: '192.168.51.121'
+mqtt_port: 1883
+sensors:
+- name: TEST
+  mqtt_topic: test
+  broker: '192.168.51.121'
+  broker_port: null
+  widget: gauge
+  unit: '%'
+  gauge:
+    min: 0.0
+    max: 100.0
+    color_low: '#4caf50'
+    color_mid: '#4fc3f7'
+    color_high: '#ef5350'
+    threshold_low: 30.0
+    threshold_high: 70.0
+  chart: null
+  history:
+    enabled: true
+    retain: 30
+    chart: true
+  display: null
+  card: null
+  alert: null
+  transform: null
+  publish: null
