@@ -3,17 +3,26 @@ use crate::config::{Config, LlmConfig};
 use crate::store::Store;
 use std::io::{self, Write};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc;
+
+const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"];
 
 pub struct Repl {
     agent: Arc<tokio::sync::Mutex<Agent>>,
     config: Config,
     store: Arc<Store>,
+    spinner_active: Arc<AtomicBool>,
 }
 
 impl Repl {
     pub fn new(agent: Arc<tokio::sync::Mutex<Agent>>, config: Config, store: Arc<Store>) -> Self {
-        Self { agent, config, store }
+        Self {
+            agent,
+            config,
+            store,
+            spinner_active: Arc::new(AtomicBool::new(false)),
+        }
     }
 
     pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -91,58 +100,98 @@ impl Repl {
     }
 
     async fn handle_prompt(&mut self, prompt: &str) {
-    print!("  ");
-    let _ = io::stdout().flush();
+        let (tx, mut rx) = mpsc::channel(128);
+        let agent = self.agent.clone();
+        let prompt = prompt.to_string();
 
-    let (tx, mut rx) = mpsc::channel(128);
-    let agent = self.agent.clone();
-    let prompt = prompt.to_string();
+        tokio::spawn(async move {
+            let mut agent = agent.lock().await;
+            agent.run_prompt_stream(&prompt, tx).await;
+        });
 
-    tokio::spawn(async move {
-        let mut agent = agent.lock().await;
-        agent.run_prompt_stream(&prompt, tx).await;
-    });
+        let spinner_active = self.spinner_active.clone();
+        let mut tool_header = false;
+        let mut first_chunk = true;
 
-    let mut tool_header = false;
-    while let Some(event) = rx.recv().await {
-        match event {
-            AgentEvent::ThinkingChunk(_) => {}
-            AgentEvent::Chunk(text) => {
-                if tool_header {
-                    println!();
+        self.start_spinner(&spinner_active);
+
+        while let Some(event) = rx.recv().await {
+            match event {
+                AgentEvent::ThinkingChunk(_) => {}
+                AgentEvent::Chunk(text) => {
+                    self.stop_spinner(&spinner_active);
+                    if tool_header {
+                        println!();
+                        tool_header = false;
+                    }
+                    if first_chunk {
+                        print!("  ");
+                        first_chunk = false;
+                    }
+                    print!("{text}");
+                }
+                AgentEvent::ToolCallStart(name) => {
+                    self.stop_spinner(&spinner_active);
+                    if !tool_header {
+                        println!();
+                        print!("  [{name}]");
+                        tool_header = true;
+                    } else {
+                        print!(" [{name}]");
+                    }
+                }
+                AgentEvent::ToolResult { name, result } => {
+                    self.stop_spinner(&spinner_active);
+                    println!("\n  [{name}] {result}");
                     tool_header = false;
+                    self.start_spinner(&spinner_active);
                 }
-                print!("{text}");
-            }
-            AgentEvent::ToolCallStart(name) => {
-                if !tool_header {
+                AgentEvent::Done => {
+                    self.stop_spinner(&spinner_active);
                     println!();
-                    print!("  [{name}]");
-                    tool_header = true;
-                } else {
-                    print!(" [{name}]");
+                    if tool_header {
+                        println!();
+                    }
+                    break;
+                }
+                AgentEvent::Error(e) => {
+                    self.stop_spinner(&spinner_active);
+                    println!("\n  Error: {e}");
+                    break;
                 }
             }
-            AgentEvent::ToolResult { name, result } => {
-                println!("\n  [{name}] {result}");
-                tool_header = false;
-            }
-            AgentEvent::Done => {
-                println!();
-                if tool_header {
-                    println!();
-                }
-                break;
-            }
-            AgentEvent::Error(e) => {
-                println!("\n  Error: {e}");
-                break;
-            }
+            let _ = io::stdout().flush();
         }
-        let _ = io::stdout().flush();
+        println!();
     }
-    println!();
-}
+
+    fn start_spinner(&self, active: &Arc<AtomicBool>) {
+        if active.load(Ordering::Relaxed) {
+            return;
+        }
+        active.store(true, Ordering::Relaxed);
+        let active = active.clone();
+        tokio::spawn(async move {
+            let mut i = 0usize;
+            while active.load(Ordering::Relaxed) {
+                let frame = SPINNER_FRAMES[i % SPINNER_FRAMES.len()];
+                print!("\r\x1B[2K  {frame} thinking...");
+                let _ = io::stdout().flush();
+                i += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            print!("\r\x1B[2K");
+            let _ = io::stdout().flush();
+        });
+    }
+
+    fn stop_spinner(&self, active: &Arc<AtomicBool>) {
+        if active.load(Ordering::Relaxed) {
+            active.store(false, Ordering::Relaxed);
+            std::thread::sleep(std::time::Duration::from_millis(120)); print!("\r\x1B[2K");
+            let _ = io::stdout().flush();
+        }
+    }
 
     async fn text_connect(&mut self) {
         let provider = self.prompt("  LLM provider [ppq/togetherai/openrouter]: ").await;
