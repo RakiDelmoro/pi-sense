@@ -1,7 +1,0 @@
-{
-	"name": "Pi Sense Dev",
-	"image": "mcr.microsoft.com/devcontainers/typescript-node",
-	"forwardPorts": [3000, 1883],
-	"runArgs": ["--network=host"],
-	"remoteUser": "root"
-}
