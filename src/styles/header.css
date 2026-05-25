@@ -1,0 +1,23 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  height: 100%;
+  padding: 0 12px;
+  width: 100%;
+}
+
+.header-logo {
+  height: 38px;
+  width: 38px;
+  object-fit: contain;
+  opacity: 0.9;
+}
+
+.header-brand {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+}

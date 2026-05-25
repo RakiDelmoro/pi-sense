@@ -1,0 +1,38 @@
+.sensor-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color 0.2s ease;
+}
+
+.sensor-card:hover {
+  border-color: var(--color-accent);
+}
+
+.sensor-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sensor-card__label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.sensor-card__topic {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  font-family: monospace;
+}
+
+.sensor-card__body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
