@@ -1,14 +1,15 @@
-// For format details, see https://aka.ms/devcontainer.json. For config options, see the
-// README at: https://github.com/marcosgomesneto/bun-devcontainers/tree/main/src/basic-bun
 {
   "name": "PiSense Development",
-  "dockerFile": "Dockerfile",
-  "forwardPorts": [3141],
-  // Configure tool-specific properties.
+  "dockerComposeFile": [
+    "../docker-compose.yml",
+    "../docker-compose.dev.yml"
+  ],
+  "service": "app",
+  "workspaceFolder": "/workspaces/pi-sense",
+  "forwardPorts": [3141, 1883, 8086],
+  "postCreateCommand": "bun install",
   "customizations": {
-    // Configure properties specific to VS Code.
     "vscode": {
-      // Add the IDs of extensions you want installed when the container is created.
       "extensions": [
         "oven.bun-vscode"
       ]
