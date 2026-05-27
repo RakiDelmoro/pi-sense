@@ -6,6 +6,7 @@ interface SensorUpdate {
   topic: string;
   value: number;
   timestamp: string;
+  timeOffsetMs?: number;
 }
 
 type TopicHandler = (update: SensorUpdate) => void;
@@ -83,12 +84,10 @@ export function useSensorValue(topic: string): number | null {
   // Fetch latest value from InfluxDB on mount so we don't show '—' for
   // data that arrived before the browser connected.
   useEffect(() => {
-    fetch(`/api/history?topic=${encodeURIComponent(topic)}&range=1h`)
+    fetch(`/api/latest?topic=${encodeURIComponent(topic)}`)
       .then(r => r.json())
-      .then((data: { value: number; timestamp: string }[]) => {
-        if (data.length > 0) {
-          setValue(data[data.length - 1].value);
-        }
+      .then((data: { value: number; timestamp: string } | null) => {
+        if (data) setValue(data.value);
       })
       .catch(() => { /* latest unavailable — wait for live push */ });
   }, [topic]);
@@ -106,28 +105,43 @@ export function useSensorValue(topic: string): number | null {
 export interface HistoryPoint {
   value: number;
   timestamp: string;
+  timeOffsetMs?: number;
 }
 
-/** Get historical values for a topic. Fetches from /api/history on mount,
-    then appends live updates as they arrive. */
-export function useSensorHistory(topic: string, maxPoints: number = 60): HistoryPoint[] {
+/** Get data points for a topic within a time range. Fetches from InfluxDB on mount
+    (and when range changes), then appends live updates as they arrive (ring buffer caps at maxPoints).
+    Server auto-downsamples only if raw point count exceeds the threshold — sparse/fresh sensors always get raw data.
+    When start/stop ISO timestamps are provided, uses absolute time range instead of relative. */
+export function useSensorHistory(topic: string, maxPoints: number = 8640, range: string = '24h', startIso?: string, stopIso?: string): HistoryPoint[] {
   const [history, setHistory] = useState<HistoryPoint[]>([]);
 
-  // Fetch historical data on mount
+  // Fetch data for the selected time range (re-fetch when range or absolute times change)
   useEffect(() => {
-    fetch(`/api/history?topic=${encodeURIComponent(topic)}&range=1h`)
+    // Clear old data immediately — prevents race condition where old data
+    // renders under a new range before the fetch completes
+    setHistory([]);
+    const params = new URLSearchParams({
+      topic,
+      limit: String(maxPoints),
+      range,
+    });
+    if (startIso) params.set('start', startIso);
+    if (stopIso) params.set('stop', stopIso);
+    fetch(`/api/history?${params}`)
       .then(r => r.json())
       .then((data: HistoryPoint[]) => {
         setHistory(data.length > maxPoints ? data.slice(-maxPoints) : data);
       })
       .catch(() => { /* history unavailable — start empty */ });
-  }, [topic, maxPoints]);
+  }, [topic, maxPoints, range, startIso, stopIso]);
 
   // Append live updates
   useEffect(() => {
     const handler: TopicHandler = (msg) => {
       setHistory(prev => {
-        const next = [...prev, { value: msg.value, timestamp: msg.timestamp }];
+        const point: HistoryPoint = { value: msg.value, timestamp: msg.timestamp };
+        if (msg.timeOffsetMs != null) point.timeOffsetMs = msg.timeOffsetMs;
+        const next = [...prev, point];
         return next.length > maxPoints ? next.slice(-maxPoints) : next;
       });
     };
@@ -137,3 +151,4 @@ export function useSensorHistory(topic: string, maxPoints: number = 60): History
 
   return history;
 }
+

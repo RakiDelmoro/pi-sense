@@ -6,5 +6,7 @@ export interface SensorConfig {
   min?: number;
   max?: number;
   decimals?: number;
+  /** JSON key to extract the numeric value from MQTT payloads (default: 'value') */
+  valueKey?: string;
   [key: string]: unknown;
 }

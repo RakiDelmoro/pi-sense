@@ -12,6 +12,17 @@ function join(...parts: string[]) {
   return parts.join('/').replace(/\/+/g, '/');
 }
 
+// ── Per-topic value keys (extracted from sensor configs) ─────────
+// Maps MQTT topic → JSON key to extract numeric value from payloads.
+// Default is 'value'. If a sensor config specifies `valueKey`, that's used instead.
+const topicValueKeys = new Map<string, string>();
+
+// ── Per-topic time-offset keys ────────────────────────────────────
+// Maps MQTT topic → JSON key for the time offset (ms) in payloads.
+// When present, the bridge stores `time_offset_ms` alongside `value`
+// and the history/latest APIs use a pivot query to return both fields.
+const topicTimeOffsetKeys = new Map<string, string>();
+
 // ── InfluxDB client ──────────────────────────────────────────────
 const influx = new InfluxDB({ url: INFLUX_URL, token: INFLUX_TOKEN });
 const queryApi = influx.getQueryApi(INFLUX_ORG);
@@ -20,6 +31,7 @@ const writeApi = influx.getWriteApi(INFLUX_ORG, INFLUX_BUCKET, 'ms');
 // ── WebSocket clients ────────────────────────────────────────────
 const wsClients = new Set<ServerWebSocket>();
 const topicSubs = new Map<string, Set<ServerWebSocket>>(); // topic → set of ws
+const blockedTopics = new Set<string>(); // topics deleted via API — MQTT bridge skips these
 
 function subscribeWs(ws: ServerWebSocket, topics: string[]) {
   for (const topic of topics) {
@@ -47,8 +59,8 @@ function removeWs(ws: ServerWebSocket) {
 }
 
 /** Push a sensor update to all browsers subscribed to that topic */
-export function broadcastUpdate(topic: string, value: number, timestamp: string) {
-  const msg = JSON.stringify({ topic, value, timestamp });
+export function broadcastUpdate(topic: string, value: number, timestamp: string, timeOffsetMs?: number) {
+  const msg = JSON.stringify({ topic, value, timestamp, ...(timeOffsetMs != null && { timeOffsetMs }) });
   const subs = topicSubs.get(topic);
   if (subs) {
     for (const ws of subs) {
@@ -64,29 +76,42 @@ function isValidTopic(topic: string): boolean {
   return /^[a-zA-Z0-9_\-\/]+$/.test(topic);
 }
 
-/** Validate time range — only digits + unit (m/h/d) */
-function isValidRange(range: string): boolean {
-  return /^\d+[mhd]$/.test(range);
-}
+
 
 // ── InfluxDB queries ─────────────────────────────────────────────
 
 /** Query the latest value for a topic from InfluxDB */
-async function queryLatest(topic: string): Promise<{ value: number; timestamp: string } | null> {
+async function queryLatest(topic: string): Promise<{ value: number; timestamp: string; timeOffsetMs?: number } | null> {
   if (!isValidTopic(topic)) {
     console.error(`Invalid topic rejected: ${topic}`);
     return null;
   }
+  const hasTimeOffset = topicTimeOffsetKeys.has(topic);
+  // For timeOffset topics: last() before pivot() because pivot removes _value column
+  const lastBeforePivot = hasTimeOffset;
+  const pivotClause = hasTimeOffset
+    ? '|> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")'
+    : '';
+  const lastClause = hasTimeOffset ? '|> last()' : '';
   const flux = `
     from(bucket: "${INFLUX_BUCKET}")
-      |> range(start: -1h)
+      |> range(start: -24h)
       |> filter(fn: (r) => r._measurement == "sensor" and r.topic == "${topic}")
-      |> last()
+      ${lastBeforePivot ? '|> last()' : ''}
+      ${pivotClause}
+      ${!lastBeforePivot ? '|> last()' : ''}
   `;
   try {
     const rows = await queryApi.collectRows(flux, (row: any, tableMeta: any) => {
       const o = tableMeta.toObject(row);
-      return { value: Number(o._value), timestamp: o._time };
+      const result: { value: number; timestamp: string; timeOffsetMs?: number } = {
+        value: Number(hasTimeOffset ? o.value : o._value),
+        timestamp: o._time,
+      };
+      if (hasTimeOffset && o.time_offset_ms != null) {
+        result.timeOffsetMs = Number(o.time_offset_ms);
+      }
+      return result;
     });
     if (rows.length > 0) return rows[0];
   } catch (err) {
@@ -95,30 +120,157 @@ async function queryLatest(topic: string): Promise<{ value: number; timestamp: s
   return null;
 }
 
-/** Query historical values for a topic */
-async function queryHistory(topic: string, range: string): Promise<{ value: number; timestamp: string }[]> {
+
+
+/** Validate time range — only digits + unit (m/h/d/Mo/y) */
+function isValidRange(range: string): boolean {
+  return /^\d+[mhd]$|^\d+Mo$|^\d+y$/.test(range);
+}
+
+/** Map client range syntax to InfluxDB Flux syntax.
+ *  InfluxDB Flux uses: m=minutes, h=hours, d=days, mo=months, y=years.
+ *  Client sends: Mo for months (uppercase to distinguish from m=minutes). */
+function normalizeRange(range: string): string {
+  return range.replace(/Mo$/, 'mo');
+}
+
+/** Validate ISO timestamp string */
+function isValidIsoTimestamp(ts: string): boolean {
+  return !isNaN(Date.parse(ts));
+}
+
+/** Max raw points before auto-downsampling kicks in. */
+const DOWNSAMPLE_THRESHOLD = 5000;
+
+/** Compute the smallest aggregateWindow that fits within the threshold.
+ *  Calculates window = range_duration / threshold, rounded up to a nice interval. */
+function autoAggregateWindow(range: string, rawCount: number): string {
+  if (rawCount <= DOWNSAMPLE_THRESHOLD) return '';
+  // Nice window sizes in ascending order
+  const windows = ['1m', '2m', '5m', '10m', '15m', '30m', '1h', '2h', '3h', '6h', '12h', '1d'];
+  const ratio = rawCount / DOWNSAMPLE_THRESHOLD;
+  // Pick the window whose index is closest to the ratio
+  const idx = Math.min(Math.ceil(Math.log2(ratio)), windows.length - 1);
+  return windows[idx];
+}
+
+/** Query data points for a topic within a time range.
+ *  Returns raw data if count is within threshold; auto-downsamples otherwise.
+ *  For topics with timeOffsetKey, uses pivot query to return timeOffsetMs. */
+async function queryHistory(topic: string, limit: number, range: string = '24h', startIso?: string, stopIso?: string): Promise<{ value: number; timestamp: string; timeOffsetMs?: number }[]> {
   if (!isValidTopic(topic)) {
     console.error(`Invalid topic rejected: ${topic}`);
     return [];
   }
-  if (!isValidRange(range)) {
-    console.error(`Invalid range rejected: ${range}`);
-    return [];
+  // Determine range clause: absolute timestamps or relative range
+  let rangeClause: string;
+  if (startIso && isValidIsoTimestamp(startIso)) {
+    const start = new Date(startIso).toISOString();
+    const stop = (stopIso && isValidIsoTimestamp(stopIso))
+      ? new Date(stopIso).toISOString()
+      : new Date().toISOString();
+    rangeClause = `start: ${start}, stop: ${stop}`;
+  } else {
+    if (!isValidRange(range)) {
+      console.error(`Invalid range rejected: ${range}`);
+      return [];
+    }
+    rangeClause = `start: -${normalizeRange(range)}`;
   }
+  if (!Number.isInteger(limit) || limit < 1) limit = 10000;
+  const hasTimeOffset = topicTimeOffsetKeys.has(topic);
+
+  // First pass: count raw points in the range
+  // For topics with time_offset_ms field, filter to only count the 'value' field
+  // to avoid double-counting
+  const fieldFilter = hasTimeOffset ? '\n      |> filter(fn: (r) => r._field == "value")' : '';
+  const countFlux = `
+    from(bucket: "${INFLUX_BUCKET}")
+      |> range(${rangeClause})
+      |> filter(fn: (r) => r._measurement == "sensor" and r.topic == "${topic}")${fieldFilter}
+      |> group()
+      |> count()
+  `;
+  let rawCount = 0;
+  try {
+    const countRows = await queryApi.collectRows(countFlux, (row: any, tableMeta: any) => {
+      const o = tableMeta.toObject(row);
+      return Number(o._value);
+    });
+    rawCount = countRows[0] ?? 0;
+  } catch (err) {
+    console.error('InfluxDB count error:', err);
+  }
+
+  // For timeOffset topics, skip aggregateWindow (can't meaningfully average time_offset_ms)
+  // and use pivot to merge value + time_offset_ms into single rows
+  const window = !hasTimeOffset && rawCount > DOWNSAMPLE_THRESHOLD ? autoAggregateWindow(range, rawCount) : '';
+  const windowClause = window ? `|> aggregateWindow(every: ${window}, fn: mean, createEmpty: false)` : '';
+
+  // For topics with timeOffsetKey, pivot the value and time_offset_ms fields
+  const pivotClause = hasTimeOffset
+    ? '|> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")'
+    : '';
+
   const flux = `
     from(bucket: "${INFLUX_BUCKET}")
-      |> range(start: -${range})
+      |> range(${rangeClause})
       |> filter(fn: (r) => r._measurement == "sensor" and r.topic == "${topic}")
+      ${windowClause}
+      ${pivotClause}
+      |> sort(columns: ["_time"])
+      |> limit(n: ${limit})
   `;
   try {
     const rows = await queryApi.collectRows(flux, (row: any, tableMeta: any) => {
       const o = tableMeta.toObject(row);
-      return { value: Number(o._value), timestamp: o._time };
+      const result: { value: number; timestamp: string; timeOffsetMs?: number } = {
+        value: Number(hasTimeOffset ? o.value : o._value),
+        timestamp: o._time,
+      };
+      if (hasTimeOffset && o.time_offset_ms != null) {
+        result.timeOffsetMs = Number(o.time_offset_ms);
+      }
+      return result;
     });
     return rows;
   } catch (err) {
     console.error('InfluxDB query error (history):', err);
     return [];
+  }
+}
+
+// ── InfluxDB data deletion ─────────────────────────────────────
+
+/** Delete all InfluxDB data for a topic. Returns true on success (HTTP 204). */
+async function deleteInfluxData(topic: string): Promise<boolean> {
+  if (!isValidTopic(topic)) {
+    console.error(`Invalid topic rejected for deletion: ${topic}`);
+    return false;
+  }
+  const url = `${INFLUX_URL}/api/v2/delete?org=${encodeURIComponent(INFLUX_ORG)}&bucket=${encodeURIComponent(INFLUX_BUCKET)}`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${INFLUX_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        start: '1970-01-01T00:00:00Z',
+        stop: '2030-01-01T00:00:00Z',
+        predicate: `topic="${topic}"`,
+      }),
+    });
+    if (res.status === 204) {
+      console.log(`Deleted InfluxDB data for topic: ${topic}`);
+      return true;
+    }
+    console.error(`InfluxDB delete failed: HTTP ${res.status}`);
+    return false;
+  } catch (err) {
+    console.error('InfluxDB delete error:', err);
+    return false;
   }
 }
 
@@ -132,6 +284,7 @@ async function generateSensorRegistry() {
 
   const imports: string[] = [];
   const items: string[] = [];
+  const activeTopics = new Set<string>();
 
   for (const entry of entries) {
     const slug = entry.match(/sensors\/([^/]+)\/sensor\.tsx/)?.[1];
@@ -141,6 +294,24 @@ async function generateSensorRegistry() {
       console.error(`Invalid sensor slug skipped: ${slug} (must be lowercase alphanumeric + hyphens)`);
       continue;
     }
+    // Read topic and valueKey from config
+    try {
+      const configContent = await Bun.file(join(ROOT, 'sensors', slug, 'config.ts')).text();
+      const topicMatch = configContent.match(/topic:\s*['"]([^'"]+)['"]/);
+      if (topicMatch) {
+        activeTopics.add(topicMatch[1]);
+        // Extract valueKey if specified (default is 'value')
+        const valueKeyMatch = configContent.match(/valueKey:\s*['"]([^'"]+)['"]/);
+        if (valueKeyMatch) {
+          topicValueKeys.set(topicMatch[1], valueKeyMatch[1]);
+        }
+        // Extract timeOffsetKey if specified
+        const timeOffsetKeyMatch = configContent.match(/timeOffsetKey:\s*['"]([^'"]+)['"]/);
+        if (timeOffsetKeyMatch) {
+          topicTimeOffsetKeys.set(topicMatch[1], timeOffsetKeyMatch[1]);
+        }
+      }
+    } catch { /* ignore — topic will remain blocked if config can't be read */ }
     const varName = slug.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
     // Relative path from src/ to sensors/<slug>/sensor.tsx
     imports.push(`import ${varName} from '../${entry.replace(/\.tsx$/, '')}';`);
@@ -163,6 +334,11 @@ ${items.join('\n')}
 
 export default sensorRegistry;
 `;
+
+  // Unblock topics that have active sensors (handles re-creation after deletion)
+  for (const topic of activeTopics) {
+    blockedTopics.delete(topic);
+  }
 
   await Bun.write(join(ROOT, 'src/sensor-registry.ts'), content);
   console.log(`Generated sensor registry: ${entries.length} sensor(s) found`);
@@ -267,17 +443,40 @@ const server = Bun.serve({
       return new Response('WebSocket upgrade failed', { status: 500 });
     }
 
-    // API: historical data
-    if (pathname === '/api/history') {
+    // API: latest value for a topic
+    if (pathname === '/api/latest') {
       const topic = url.searchParams.get('topic') || '';
-      const range = url.searchParams.get('range') || '1h';
       if (!topic) {
         return new Response(JSON.stringify({ error: 'topic is required' }), {
           status: 400,
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      return queryHistory(topic, range).then(data =>
+      return queryLatest(topic).then(data =>
+        new Response(JSON.stringify(data), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+      ).catch(() =>
+        new Response(JSON.stringify(null), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+    }
+
+    // API: historical data (raw unless auto-downsampled)
+    if (pathname === '/api/history') {
+      const topic = url.searchParams.get('topic') || '';
+      const limit = parseInt(url.searchParams.get('limit') || '8640', 10);
+      const range = url.searchParams.get('range') || '24h';
+      const startIso = url.searchParams.get('start') || undefined;
+      const stopIso = url.searchParams.get('stop') || undefined;
+      if (!topic) {
+        return new Response(JSON.stringify({ error: 'topic is required' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return queryHistory(topic, limit, range, startIso, stopIso).then(data =>
         new Response(JSON.stringify(data), {
           headers: { 'Content-Type': 'application/json' },
         })
@@ -287,6 +486,63 @@ const server = Bun.serve({
           headers: { 'Content-Type': 'application/json' },
         })
       );
+    }
+
+    // API: clear sensor data (wipe InfluxDB, keep topic active — NOT a sensor deletion)
+    if (req.method === 'POST' && pathname === '/api/sensor-data/clear') {
+      const topic = url.searchParams.get('topic') || '';
+      if (!topic || !isValidTopic(topic)) {
+        return new Response(JSON.stringify({ error: 'valid topic is required' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return deleteInfluxData(topic).then(deleted => {
+        if (!deleted) {
+          return new Response(JSON.stringify({ error: 'failed to clear InfluxDB data' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Do NOT block the topic — new data continues to flow normally
+        return new Response(null, { status: 204 });
+      });
+    }
+
+    // API: delete sensor data and block topic (permanent sensor removal)
+    if (req.method === 'DELETE' && pathname === '/api/sensor-data') {
+      const topic = url.searchParams.get('topic') || '';
+      if (!topic || !isValidTopic(topic)) {
+        return new Response(JSON.stringify({ error: 'valid topic is required' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return deleteInfluxData(topic).then(deleted => {
+        if (!deleted) {
+          return new Response(JSON.stringify({ error: 'failed to delete InfluxDB data' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Block the topic so the MQTT bridge stops writing new data for it
+        blockedTopics.add(topic);
+
+        // Clean up WebSocket subscriptions for this topic
+        const subs = topicSubs.get(topic);
+        if (subs) {
+          for (const ws of subs) {
+            ws.send(JSON.stringify({ topic, deleted: true }));
+          }
+          topicSubs.delete(topic);
+        }
+
+        return new Response(null, { status: 204 });
+      });
     }
 
     // Serve index.html
@@ -372,14 +628,25 @@ mqttClient.on('connect', () => {
 });
 
 mqttClient.on('message', (topic, payload) => {
+  // Skip blocked (deleted) topics — don't write ghost data to InfluxDB
+  if (blockedTopics.has(topic)) return;
+
   const raw = payload.toString();
   let value: number;
+  let timeOffsetMs: number | undefined;
   let timestamp: string;
 
   try {
     const data = JSON.parse(raw);
-    value = Number(data.value ?? data);
+    const key = topicValueKeys.get(topic) ?? 'value';
+    value = Number(data[key] ?? data.value ?? data);
     if (isNaN(value)) return;
+    // Extract time offset if this topic has a timeOffsetKey configured
+    const timeOffsetKey = topicTimeOffsetKeys.get(topic);
+    if (timeOffsetKey && data[timeOffsetKey] != null) {
+      timeOffsetMs = Number(data[timeOffsetKey]);
+      if (isNaN(timeOffsetMs)) timeOffsetMs = undefined;
+    }
     timestamp = (data.timestamp && !isNaN(Date.parse(data.timestamp)))
       ? data.timestamp
       : new Date().toISOString();
@@ -393,15 +660,18 @@ mqttClient.on('message', (topic, payload) => {
   // ① Write to InfluxDB — it's the source of truth
   const point = new Point('sensor')
     .tag('topic', topic)
-    .floatField('value', value)
-    .timestamp(new Date(timestamp));
+    .floatField('value', value);
+  if (timeOffsetMs != null) {
+    point.intField('time_offset_ms', timeOffsetMs);
+  }
+  point.timestamp(new Date(timestamp));
   writeApi.writePoint(point);
 
   // ② Flush, then query InfluxDB and broadcast to browsers — all in-process
   writeApi.flush().then(async () => {
     const latest = await queryLatest(topic);
     if (latest) {
-      broadcastUpdate(topic, latest.value, latest.timestamp);
+      broadcastUpdate(topic, latest.value, latest.timestamp, latest.timeOffsetMs);
     }
   }).catch((err) => {
     console.error('InfluxDB flush error:', err);
