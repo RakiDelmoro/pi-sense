@@ -1,0 +1,33 @@
+services:
+  # ── InfluxDB (time-series database) ─────────────────────────
+  influxdb:
+    image: influxdb:2.7
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USERNAME:-admin}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD:-pi-sense-admin}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUX_ORG:-pi-sense}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUX_BUCKET:-pi-sense}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_TOKEN:-pi-sense-dev-token}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # ── Mosquitto (MQTT broker) ─────────────────────────────────
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto-dev.conf:/mosquitto/config/mosquitto.conf
+    restart: unless-stopped
+
+volumes:
+  influxdb-data:
