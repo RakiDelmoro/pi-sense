@@ -13,7 +13,7 @@ Any time the user mentions a sensor card — adding, changing, or removing one.
 
 Examples of what a user might say:
 
-- "Create a Water Tank card listening to topic `water-tank`"
+- "Create a humidity card listening to topic `humidity`"
 - "Show wind direction as a compass arrow for topic `wind/dir`"
 - "Add a card with a colored ring — green if > 70, yellow if > 30, red otherwise — for topic `battery-level`"
 - "Make a 7-segment LED display for topic `power/readout`"
@@ -54,7 +54,7 @@ Infer the mode from the user's prompt:
 
 Generate a new sensor card from scratch.
 
-1. Extract label, topic, visual description, unit, range, decimals from the prompt
+1. Extract label, topic, visual description, unit, range, decimals, valueKey from the prompt
 2. If the user doesn't describe the visual clearly, ask them what they want it to look like
 3. Generate the slug from the label (lowercase, hyphens, no special chars). If `sensors/<slug>/` exists, append a number
 4. Create `sensors/<slug>/config.ts`, `sensor.tsx`, `sensor.css`
@@ -81,13 +81,12 @@ Remove a sensor completely — code and database data. **Always ask for confirma
 2. Use `ask_user_question` to confirm: *"Delete the card? This will remove the sensor code and all InfluxDB data for topic `'<topic>'`."*
 3. If confirmed:
    - Remove `sensors/<slug>/` folder
-   - Delete all InfluxDB data for that topic via the API:
+   - Delete all InfluxDB data for that topic via the server API (server must be running):
      ```bash
-     curl -X POST "http://localhost:8086/api/v2/delete?org=pi-sense&bucket=pi-sense" \
-       -H "Authorization: Token pi-sense-dev-token" \
-       -H "Content-Type: application/json" \
-       -d '{"start":"1970-01-01T00:00:00Z","stop":"2030-01-01T00:00:00Z","predicate":"topic=\"<topic>\""}'
+     STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "http://localhost:3141/api/sensor-data?topic=<topic>")
+     if [ "$STATUS" != "204" ]; then echo "FAIL: InfluxDB data not deleted (HTTP $STATUS)"; fi
      ```
+     This also blocks the topic so the MQTT bridge stops writing new data for it.
 4. Verify — no other files need to be touched (auto-discovery will stop including the deleted sensor)
 
 ## Data flow
@@ -96,19 +95,19 @@ The dashboard never touches MQTT directly. All data comes from InfluxDB via `ser
 
 ```
 Sensor → MQTT Broker → server.ts (MQTT bridge) → InfluxDB (write + flush)
-                                                       ↑                │
+                                                       │                │
                                                        │   server.ts detects topic updated
                                                        │                │
                                                        │           server.ts
                                                        │                │
-                                                       └── query latest ┘
+                                                       └──> query latest ┘
                                                               │
                                                      WebSocket push to browser
 ```
 
 - `server.ts` subscribes to MQTT, writes data to InfluxDB, flushes, then queries InfluxDB for the confirmed value and pushes it to browsers via WebSocket
 - Browser connects to `server.ts` WebSocket, receives `{ topic, value, timestamp }` messages — all values come from InfluxDB queries
-- Browser queries `GET /api/history?topic=...&range=...` for historical data (charts) — also from InfluxDB
+- Browser queries `GET /api/history?topic=...&limit=...&range=...` for data within a time range (charts) — also from InfluxDB; auto-downsamples only when raw count exceeds threshold
 - **InfluxDB is the only source of truth.** The browser never sees data that InfluxDB hasn't confirmed.
 
 ## Rules
@@ -126,6 +125,8 @@ sensors/<slug>/
 
 **Only create/modify/delete files within `sensors/<slug>/`.** Never edit `src/app.tsx` or any other file outside the sensor folder — auto-discovery handles everything.
 
+**Exception:** When a new per-sensor config field (e.g. `valueKey`) requires server-side support, `server.ts` may be edited. This should be rare — only when the MQTT bridge needs to know how to extract values from payloads differently per sensor. Frontend-only config fields (thresholds, colors, etc.) never require server edits.
+
 ### config.ts — always this shape
 
 ```ts
@@ -139,10 +140,13 @@ export const config: SensorConfig = {
   min: 0,
   max: 100,
   decimals: 0,
+  valueKey: undefined,  // JSON key for numeric value in MQTT payload (default: 'value')
 };
 ```
 
-Add any extra fields the visualization needs (e.g. thresholds, zones, colors). The `SensorConfig` interface allows arbitrary extra properties via an index signature.
+**`valueKey`** — The JSON key used to extract the numeric value from the sensor's MQTT payload. Defaults to `'value'` if omitted. Set this when the payload uses a different key (e.g. `'water_level'` for `{"water_level": 73.5}`). The MQTT bridge reads each sensor's `valueKey` from its config and uses it to parse incoming payloads — this is per-sensor, not global.
+
+Only keys with a registered sensor card are extracted and stored. Any other keys in the payload are ignored — they're parsed but never read, so transient data like `time_offset` or `device_id` won't clutter InfluxDB.
 
 ### sensor.tsx — component rules
 
@@ -166,7 +170,7 @@ Every CSS class must be scoped with `.sensor-<slug>` to avoid collisions across 
 .reading { font-size: 2rem; }
 
 /* GOOD — scoped */
-.sensor-water-tank .reading { font-size: 2rem; }
+.sensor-humidity .reading { font-size: 2rem; }
 ```
 
 Use these CSS custom properties from the project theme:
@@ -226,6 +230,8 @@ interface SensorConfig {
   min?: number;
   max?: number;
   decimals?: number;
+  /** JSON key to extract the numeric value from MQTT payloads (default: 'value') */
+  valueKey?: string;
   [key: string]: unknown;  // extra fields for thresholds, zones, colors, etc.
 }
 ```
@@ -237,7 +243,7 @@ Two hooks for getting sensor data into cards. **Never call InfluxDB or MQTT from
 | Hook | Returns | Use for |
 |---|---|---|
 | `useSensorValue(topic)` | `number \| null` | Big number display, gauge, status indicator |
-| `useSensorHistory(topic, maxPoints?)` | `HistoryPoint[]` | Line chart, area chart, trend (default 60 points) |
+| `useSensorHistory(topic, maxPoints?, range?)` | `HistoryPoint[]` | Line chart, area chart, trend | |
 
 Import:
 ```ts
@@ -246,7 +252,9 @@ import type { HistoryPoint } from '../../src/hooks/use-sensor-data';
 ```
 
 - `useSensorValue` returns `null` until the first WebSocket update arrives
-- `useSensorHistory` returns `HistoryPoint[]` — each point has `{ value: number, timestamp: string }`. Fetches `/api/history` on mount (last 1h), then appends live WebSocket updates, capped at `maxPoints`
+- `useSensorHistory` returns `HistoryPoint[]` — each point has `{ value: number, timestamp: string }`. Fetches data from `/api/history` for the given range on mount (and when range changes), then appends live WebSocket updates, capped at `maxPoints` (ring buffer — oldest points drop off when the limit is exceeded)
+  - `maxPoints` — max data points to keep (default 8640). Set based on how many points the chart should show
+  - `range` — InfluxDB time range filter (default `'24h'`). Controls how far back to query. Common values: `'1h'`, `'24h'`, `'7d'`, `'30d'`, `'3Mo'`, `'6Mo'`, `'1y'`
 
 ### `src/styles/sensor-card.css` — Base card styles
 
@@ -307,6 +315,6 @@ Example:
 - [ ] Identify which sensor (by label, slug, or topic)
 - [ ] Ask user for confirmation with `ask_user_question` — mention code AND database data will be removed
 - [ ] If confirmed: remove `sensors/<slug>/` folder
-- [ ] Delete InfluxDB data for that topic via `curl -X POST` to `/api/v2/delete`
+- [ ] Delete InfluxDB data + block topic via `DELETE /api/sensor-data?topic=<topic>` — verify HTTP 204
 - [ ] `bunx tsc --noEmit` — no type errors
 - [ ] `ls sensors/<slug>/ 2>/dev/null` — folder no longer exists
