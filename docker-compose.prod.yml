@@ -1,9 +1,29 @@
+name: pi-sense-prod
+
 services:
-  # ── InfluxDB (time-series database) ─────────────────────────
-  influxdb:
-    image: influxdb:2.7
+  dashboard:
+    container_name: pi-sense-prod-dashboard
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
-      - "8086:8086"
+      - "3141:3141"
+    env_file:
+      - .env
+    depends_on:
+      influxdb:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+
+  # ── InfluxDB (time-series database) ─────────────────────────
+  #  No ports exposed — internal only. Access via SSH tunnel if needed:
+  #    ssh -L 8086:localhost:8086 user@server
+  influxdb:
+    container_name: pi-sense-prod-influxdb
+    image: influxdb:2.7
+    # No ports mapping — not exposed to the network
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
       - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USERNAME:-admin}
@@ -22,12 +42,21 @@ services:
 
   # ── Mosquitto (MQTT broker) ─────────────────────────────────
   mosquitto:
+    container_name: pi-sense-prod-mosquitto
     image: eclipse-mosquitto:2
     ports:
       - "1883:1883"
+    environment:
+      - MQTT_USERNAME=${MQTT_USERNAME}
+      - MQTT_PASSWORD=${MQTT_PASSWORD}
     volumes:
-      - ./mosquitto-dev.conf:/mosquitto/config/mosquitto.conf
+      - ./mosquitto-prod.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto-data:/mosquitto/config/auth
+      - ./mosquitto-entrypoint.sh:/docker-entrypoint.sh:ro
+    entrypoint: ["/docker-entrypoint.sh"]
+    command: ["/usr/sbin/mosquitto", "-c", "/mosquitto/config/mosquitto.conf"]
     restart: unless-stopped
 
 volumes:
   influxdb-data:
+  mosquitto-data:

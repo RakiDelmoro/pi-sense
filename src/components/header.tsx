@@ -4,8 +4,10 @@ export function Header() {
   return (
     <header class="dashboard-header">
       <div class="header">
-        <img class="header-logo" src="/public/logo.png" alt="Pi Sense" />
-        <span class="header-brand">Pi Sense</span>
+        <div class="header-logo-container">
+          <img class="header-logo" src="/public/logo.png" alt="Pi" />
+          <span class="header-logo-text">Sense</span>
+        </div>
       </div>
     </header>
   );

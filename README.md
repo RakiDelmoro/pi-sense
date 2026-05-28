@@ -11,6 +11,24 @@
 
 ---
 
+## 🛠 Setup & Installing Pi
+
+To design and build this project, you need to install the **Pi Coding Agent CLI**.
+
+```bash
+# Install Pi globally via Bun or npm
+bun install -g @earendil-works/pi-coding-agent
+# or
+npm install -g @earendil-works/pi-coding-agent
+```
+
+Once installed, you can start the interactive harness directly in this directory:
+```bash
+pi
+```
+
+---
+
 ## Development
 
 ### 1. Open the dev container
@@ -23,14 +41,14 @@ cd pi-sense
 Open the project in VS Code — it will prompt to **Reopen in Container**. Accept it.
 
 The dev container starts:
-- **App** — your workspace with Bun and all dependencies
-- **InfluxDB** — time-series database (port 8086)
-- **Mosquitto** — MQTT broker (port 1883)
+- **App** (`pi-sense-dev-app`) — your workspace with Bun and all dependencies
+- **InfluxDB** (`pi-sense-dev-influxdb`) — time-series database (port 8086)
+- **Mosquitto** (`pi-sense-dev-mosquitto`) — MQTT broker (port 1883)
 
-### 2. Start the dashboard
+### 2. Start the core system (Dashboard, MQTT, InfluxDB)
 
 ```bash
-bun run dev
+bun start
 ```
 
 Open **http://localhost:3141** — the dashboard is live.
@@ -53,12 +71,12 @@ sensors/<slug>/
 └── sensor.css     # scoped styles
 ```
 
-All sensor topics must start with `sensors/` — the server subscribes to `sensors/#`.
+All sensor topics must start with `pi-sensors/` — the server subscribes to `pi-sensors/#`.
 
 ### 4. Test with live data
 
 ```bash
-mosquitto_pub -t "sensors/temperature" -m '{"value": 23.5}'
+mosquitto_pub -t "pi-sensors/temperature" -m '{"value": 23.5}'
 ```
 
 ---
@@ -79,3 +97,30 @@ Edit `.env` — replace all `change-me-in-production` values with real credentia
 docker compose -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml up -d
 ```
+
+### 3. Deploy updates (preserves existing data)
+
+When you add new sensor cards in dev and want to ship them to production:
+
+```bash
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Existing sensor data in InfluxDB is preserved — only the dashboard container is recreated with the new image.
+
+### 4. Management commands
+
+| Command | What it does | Data impact |
+|---------|--------------|-------------|
+| `docker compose -f docker-compose.prod.yml down` | Stop all containers | ✅ Data preserved |
+| `docker compose -f docker-compose.prod.yml up -d` | Start all containers | ✅ Data preserved |
+| `docker compose -f docker-compose.prod.yml down -v` | Stop and **delete all volumes** | ⚠️ **All data wiped** |
+
+> **⚠️ `down -v` is destructive** — it permanently deletes InfluxDB sensor history and Mosquitto credentials. Use it only when you want a completely fresh start (e.g., changing credentials, corrupted data).
+
+---
+
+## 🤖 Let Pi Handle It
+
+**Got a warning, caught a bug, or dealing with some messy spots in our codebase? Do not sweat it.** Let [Pi](https://pi.dev/) deal with it. Just drop your thoughts or paste the error in the chat, and let Pi do the heavy lifting of rewriting, refactoring, and fixing. **Write less, build more.** 🚀

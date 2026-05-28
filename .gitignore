@@ -1,0 +1,38 @@
+# Dependencies
+node_modules
+
+# Environment — contains tokens and passwords
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+
+# Database storage
+.influxdb-data/
+
+# MQTT credentials — auto-generated in a Docker volume, never on host
+# mosquitto-credentials
+
+# Pi agent internals — not part of the app
+.context/
+
+# Sensors
+sensors/
+
+# Project docs
+docs/
+
+# Stray images in project root (screenshots, debug captures)
+/*.jpg
+/*.png
+/*.gif
+/*.webp
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
