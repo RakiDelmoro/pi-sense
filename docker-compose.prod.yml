@@ -53,7 +53,7 @@ services:
       - ./mosquitto-prod.conf:/mosquitto/config/mosquitto.conf
       - mosquitto-data:/mosquitto/config/auth
       - ./mosquitto-entrypoint.sh:/docker-entrypoint.sh:ro
-    entrypoint: ["/docker-entrypoint.sh"]
+    entrypoint: ["sh", "/docker-entrypoint.sh"]
     command: ["/usr/sbin/mosquitto", "-c", "/mosquitto/config/mosquitto.conf"]
     restart: unless-stopped
 
