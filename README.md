@@ -1,7 +1,10 @@
 <div align="center">
-  <img src="public/logo.png" width="120" />
+  <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+    <img src="public/logo.png" width="48" style="vertical-align: middle;" />
+    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 2.22rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; background: linear-gradient(90deg, #00f0ff 0%, #0072ff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.45)); vertical-align: middle;">Sense</span>
+  </div>
 
-  # Pi Sense
+  <br />
 
   **Sensor dashboards that build themselves.**
 
