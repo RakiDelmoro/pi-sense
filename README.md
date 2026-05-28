@@ -58,7 +58,7 @@ Open **http://localhost:3141** — the dashboard is live.
 Tell [Pi](https://pi.dev/) what you want. It generates the card, wires the data, renders the visualization.
 
 ```
-You: "Add a temperature gauge on topic sensors/temp, range -10 to 50"
+You: "Add a temperature gauge on topic pi-sensors/temperature, range -10 to 50"
 Pi:  Creates sensors/temperature/{config.ts, sensor.tsx, sensor.css}
 ```
 
