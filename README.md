@@ -1,11 +1,8 @@
 <div align="center">
-  <img src="public/logo-readme.png" width="160" />
+  <img src="public/logo-readme.png" width="300" />
 
   <br />
-
-  **Sensor dashboards that build themselves.**
-
-  **Sensor dashboards that build themselves.**
+  <br />
 
   **Think it. Say it. See it.** Describe a sensor card and [Pi](https://pi.dev/) builds it end-to-end — code, data, and visuals appear automatically. The only tool you need is your words.
 
