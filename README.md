@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="public/logo-readme.png" width="300" />
+  <img src="public/gen-logo.png" width="300" />
 
   <br />
   <br />
