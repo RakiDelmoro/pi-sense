@@ -7,6 +7,17 @@ description: Manage sensor dashboard cards for Pi Sense. Use when the user asks 
 
 Manage sensor cards for the Pi Sense dashboard. The user describes what they want; you build it with Preact and Chart.js.
 
+## Layout Ordering
+
+The dashboard orders sensor cards based on the optional `layoutWeight` property in `config.ts`.
+- Lower numbers render first (left-to-right, top-to-bottom).
+- Use weights in increments of 10 (`10`, `20`, `30`...) to allow inserting other cards easily in-between later.
+- If no weight is specified, cards will fall back to a weight of `999` (bottom of the page).
+
+Default suggested layouts:
+- **Main gauges / indicators:** `layoutWeight: 10`, `20`, etc. (will snap side-by-side using 6 columns unless `--wide`)
+- **Main charts / graphs:** `layoutWeight: 30`, `40`, etc. (using `.sensor-card--wide` to span the full screen)
+
 ## When to use
 
 Any time the user mentions a sensor card — adding, changing, or removing one.
@@ -55,7 +66,8 @@ Infer the mode from the user's prompt:
 Generate a new sensor card from scratch.
 
 1. Extract label, topic, visual description, unit, range, decimals, valueKey from the prompt
-2. If the user doesn't describe the visual clearly, ask them what they want it to look like
+2. If the user doesn't specify the MQTT topic, **always ask** — the topic is required and cannot be guessed
+3. If the user doesn't describe the visual clearly, ask them what they want it to look like
 3. Generate the slug from the label (lowercase, hyphens, no special chars). If `sensors/<slug>/` exists, append a number
 4. Create `sensors/<slug>/config.ts`, `sensor.tsx`, `sensor.css`
 5. Verify — no other files need to be touched (auto-discovery handles the rest)
@@ -141,6 +153,7 @@ export const config: SensorConfig = {
   max: 100,
   decimals: 0,
   valueKey: undefined,  // JSON key for numeric value in MQTT payload (default: 'value')
+  layoutWeight: 10,     // Optional ordering weight on the dashboard (default: 999)
 };
 ```
 

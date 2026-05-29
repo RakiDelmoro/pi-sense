@@ -26,7 +26,6 @@ docs/
 
 # Stray images in project root (screenshots, debug captures)
 /*.jpg
-/*.png
 /*.gif
 /*.webp
 

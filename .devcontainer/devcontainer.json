@@ -7,6 +7,7 @@
   "workspaceFolder": "/workspaces/pi-sense",
   "forwardPorts": [3141, 1883, 8086],
   "postCreateCommand": "bun install",
+  "remoteUser": "root",
   "customizations": {
     "vscode": {
       "extensions": [

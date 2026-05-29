@@ -1,7 +1,7 @@
 import { Point } from '@influxdata/influxdb-client';
 import mqtt from 'mqtt';
 import {
-  writeApi,
+  getWriteApi,
   queryLatest,
   blockedTopics,
   topicValueKeys,
@@ -9,22 +9,28 @@ import {
 } from '../services/influx';
 import { broadcastUpdate } from '../services/websocket';
 
-const MQTT_URL = process.env.MQTT_URL || 'mqtt://localhost:1883';
-const MQTT_TOPIC_PREFIX = process.env.MQTT_TOPIC_PREFIX || 'pi-sensors/#';
-
 export function startMqttBridge() {
-  const mqttClient = mqtt.connect(MQTT_URL, {
-    username: process.env.MQTT_USERNAME || undefined,
-    password: process.env.MQTT_PASSWORD || undefined,
+  const mqttUrl = (process.env.MQTT_URL || 'mqtt://localhost:1883').trim();
+  const mqttUsername = process.env.MQTT_USERNAME?.trim() || undefined;
+  const mqttPassword = process.env.MQTT_PASSWORD?.trim() || undefined;
+  console.log(`🔍 MQTT_URL = ${JSON.stringify(mqttUrl)}`);
+  const mqttClient = mqtt.connect(mqttUrl, {
+    username: mqttUsername,
+    password: mqttPassword,
   });
 
   mqttClient.on('connect', () => {
-    console.log(`📡 MQTT connected: ${MQTT_URL}`);
-    mqttClient.subscribe(MQTT_TOPIC_PREFIX, (err) => {
+    console.log(`📡 MQTT connected: ${mqttUrl}`);
+    const topics = [...topicValueKeys.keys()].filter(t => !blockedTopics.has(t));
+    if (topics.length === 0) {
+      console.log('📡 No sensor topics to subscribe to');
+      return;
+    }
+    mqttClient.subscribe(topics, (err) => {
       if (err) {
         console.error('MQTT subscribe error:', err);
       } else {
-        console.log(`📡 Subscribed to: ${MQTT_TOPIC_PREFIX}`);
+        console.log(`📡 Subscribed to: ${topics.join(', ')}`);
       }
     });
   });
@@ -63,6 +69,7 @@ export function startMqttBridge() {
       point.intField('time_offset_ms', timeOffsetMs);
     }
     point.timestamp(new Date(timestamp));
+    const writeApi = getWriteApi();
     writeApi.writePoint(point);
 
     writeApi.flush().then(async () => {

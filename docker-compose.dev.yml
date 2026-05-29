@@ -1,14 +1,18 @@
 name: pi-sense-dev
-
 services:
-  # ── App (dev workspace) ────────────────────────────────────────
   app:
     container_name: pi-sense-dev-app
     build:
       context: .
       dockerfile: .devcontainer/Dockerfile
     volumes:
+      # Project source (bind mount)
       - .:/workspaces/pi-sense
+      # Separate volume for node_modules so host OS doesn't interfere
+      - node-modules-data:/workspaces/pi-sense/node_modules
+      # Persist entire home directory so user-installed tools survive
+      # container restarts (npm -g, bun -g, pi install, apt, etc.)
+      - home-data:/root
     command: sleep infinity
     depends_on:
       influxdb:
@@ -16,21 +20,20 @@ services:
       mosquitto:
         condition: service_started
 
-  # ── InfluxDB (time-series database) ─────────────────────────
   influxdb:
     container_name: pi-sense-dev-influxdb
     image: influxdb:2.7
-    ports:
-      - "8086:8086"
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USERNAME:-admin}
-      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD:-pi-sense-admin}
-      - DOCKER_INFLUXDB_INIT_ORG=${INFLUX_ORG:-pi-sense}
-      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUX_BUCKET:-pi-sense}
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_TOKEN:-pi-sense-dev-token}
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=pi-sense-admin
+      - DOCKER_INFLUXDB_INIT_ORG=pi-sense
+      - DOCKER_INFLUXDB_INIT_BUCKET=pi-sense
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=pi-sense-dev-token
     volumes:
       - influxdb-data:/var/lib/influxdb2
+    ports:
+      - "8086:8086"
     healthcheck:
       test: ["CMD", "influx", "ping"]
       interval: 5s
@@ -38,7 +41,6 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # ── Mosquitto (MQTT broker) ─────────────────────────────────
   mosquitto:
     container_name: pi-sense-dev-mosquitto
     image: eclipse-mosquitto:2
@@ -50,3 +52,5 @@ services:
 
 volumes:
   influxdb-data:
+  node-modules-data:
+  home-data:

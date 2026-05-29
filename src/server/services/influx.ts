@@ -1,13 +1,36 @@
 import { InfluxDB } from '@influxdata/influxdb-client';
 
-const INFLUX_URL = process.env.INFLUX_URL || 'http://localhost:8086';
-const INFLUX_TOKEN = process.env.INFLUX_TOKEN || '';
-const INFLUX_ORG = process.env.INFLUX_ORG || 'pi-sense';
-export const INFLUX_BUCKET = process.env.INFLUX_BUCKET || 'pi-sense';
+// Lazy init — env vars are read after server.ts CRLF sanitizer runs
+let _influx: InfluxDB | null = null;
+let _queryApi: ReturnType<InfluxDB['getQueryApi']> | null = null;
+let _writeApi: ReturnType<InfluxDB['getWriteApi']> | null = null;
 
-export const influx = new InfluxDB({ url: INFLUX_URL, token: INFLUX_TOKEN });
-export const queryApi = influx.getQueryApi(INFLUX_ORG);
-export const writeApi = influx.getWriteApi(INFLUX_ORG, INFLUX_BUCKET, 'ms');
+function getInflux() {
+  if (!_influx) {
+    const url = (process.env.INFLUX_URL || 'http://localhost:8086').trim();
+    const token = (process.env.INFLUX_TOKEN || '').trim();
+    _influx = new InfluxDB({ url, token });
+  }
+  return _influx;
+}
+
+export function getQueryApi() {
+  if (!_queryApi) {
+    _queryApi = getInflux().getQueryApi((process.env.INFLUX_ORG || 'pi-sense').trim());
+  }
+  return _queryApi;
+}
+
+export function getWriteApi() {
+  if (!_writeApi) {
+    const org = (process.env.INFLUX_ORG || 'pi-sense').trim();
+    const bucket = (process.env.INFLUX_BUCKET || 'pi-sense').trim();
+    _writeApi = getInflux().getWriteApi(org, bucket, 'ms');
+  }
+  return _writeApi;
+}
+
+export function getInfluxBucket() { return (process.env.INFLUX_BUCKET || 'pi-sense').trim(); }
 
 // Per-topic metadata maps
 export const topicValueKeys = new Map<string, string>();
@@ -57,7 +80,7 @@ export async function queryLatest(topic: string): Promise<{ value: number; times
     : '';
 
   const flux = `
-    from(bucket: "${INFLUX_BUCKET}")
+    from(bucket: "${getInfluxBucket()}")
       |> range(start: -24h)
       |> filter(fn: (r) => r._measurement == "sensor" and r.topic == "${topic}")
       ${lastBeforePivot ? '|> last()' : ''}
@@ -65,7 +88,7 @@ export async function queryLatest(topic: string): Promise<{ value: number; times
       ${!lastBeforePivot ? '|> last()' : ''}
   `;
   try {
-    const rows = await queryApi.collectRows(flux, (row: any, tableMeta: any) => {
+    const rows = await getQueryApi().collectRows(flux, (row: any, tableMeta: any) => {
       const o = tableMeta.toObject(row);
       const result: { value: number; timestamp: string; timeOffsetMs?: number } = {
         value: Number(hasTimeOffset ? o.value : o._value),
@@ -114,7 +137,7 @@ export async function queryHistory(
 
   const fieldFilter = hasTimeOffset ? '\n      |> filter(fn: (r) => r._field == "value")' : '';
   const countFlux = `
-    from(bucket: "${INFLUX_BUCKET}")
+    from(bucket: "${getInfluxBucket()}")
       |> range(${rangeClause})
       |> filter(fn: (r) => r._measurement == "sensor" and r.topic == "${topic}")${fieldFilter}
       |> group()
@@ -122,7 +145,7 @@ export async function queryHistory(
   `;
   let rawCount = 0;
   try {
-    const countRows = await queryApi.collectRows(countFlux, (row: any, tableMeta: any) => {
+    const countRows = await getQueryApi().collectRows(countFlux, (row: any, tableMeta: any) => {
       const o = tableMeta.toObject(row);
       return Number(o._value);
     });
@@ -138,7 +161,7 @@ export async function queryHistory(
     : '';
 
   const flux = `
-    from(bucket: "${INFLUX_BUCKET}")
+    from(bucket: "${getInfluxBucket()}")
       |> range(${rangeClause})
       |> filter(fn: (r) => r._measurement == "sensor" and r.topic == "${topic}")
       ${windowClause}
@@ -147,7 +170,7 @@ export async function queryHistory(
       |> limit(n: ${limit})
   `;
   try {
-    const rows = await queryApi.collectRows(flux, (row: any, tableMeta: any) => {
+    const rows = await getQueryApi().collectRows(flux, (row: any, tableMeta: any) => {
       const o = tableMeta.toObject(row);
       const result: { value: number; timestamp: string; timeOffsetMs?: number } = {
         value: Number(hasTimeOffset ? o.value : o._value),
@@ -171,12 +194,12 @@ export async function deleteInfluxData(topic: string): Promise<boolean> {
     console.error(`Invalid topic rejected for deletion: ${topic}`);
     return false;
   }
-  const url = `${INFLUX_URL}/api/v2/delete?org=${encodeURIComponent(INFLUX_ORG)}&bucket=${encodeURIComponent(INFLUX_BUCKET)}`;
+  const url = `${(process.env.INFLUX_URL || 'http://localhost:8086').trim()}/api/v2/delete?org=${encodeURIComponent((process.env.INFLUX_ORG || 'pi-sense').trim())}&bucket=${encodeURIComponent(getInfluxBucket())}`;
   try {
     const res = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Token ${INFLUX_TOKEN}`,
+        'Authorization': `Token ${(process.env.INFLUX_TOKEN || '').trim()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

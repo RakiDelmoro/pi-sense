@@ -13,23 +13,25 @@ COPY sensors/ sensors/
 COPY server.ts index.html tsconfig.json ./
 
 # Generate sensor registry and build frontend bundle
-RUN bun run -e " \
+RUN bun -e " \
   const ROOT = '/app'; \
   const glob = new Bun.Glob('sensors/*/sensor.tsx'); \
-  const entries = [...glob.scanSync({ cwd: ROOT })]; \
+  const entries = [...glob.scanSync({ cwd: ROOT })].sort(); \
   const imports = []; \
   const items = []; \
   for (const entry of entries) { \
-    const slug = entry.match(/sensors\\/([^/]+)\\/sensor\\.tsx/)?.[1]; \
+    const slug = entry.match(/sensors\/([^/]+)\/sensor\\.tsx/)?.[1]; \
     if (!slug) continue; \
-    const varName = slug.replace(/-([a-z])/g, (_, c) => c.toUpperCase()); \
+    const varName = slug.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase()); \
     imports.push('import ' + varName + \" from '../\" + entry.replace(/\\.tsx$/, '') + \"';\"); \
-    items.push(\"  { slug: '\" + slug + \"', Component: \" + varName + ' },'); \
+    imports.push('import { config as ' + varName + \"Config } from '../sensors/\" + slug + \"/config';\"); \
+    items.push(\"  { slug: '\" + slug + \"', Component: \" + varName + \", config: \" + varName + 'Config },'); \
   } \
   const content = '// Auto-generated — do not edit\\n' + \
     imports.join('\\n') + '\\n\\n' + \
-    'import type { FunctionalComponent } from \"preact\";\\n\\n' + \
-    'export interface SensorEntry { slug: string; Component: FunctionalComponent; }\\n\\n' + \
+    'import type { FunctionalComponent } from \"preact\";\\n' + \
+    'import type { SensorConfig } from \"./types/sensor\";\\n\\n' + \
+    'export interface SensorEntry { slug: string; Component: FunctionalComponent; config: SensorConfig; }\\n\\n' + \
     'const sensorRegistry: SensorEntry[] = [\\n' + items.join('\\n') + '\\n];\\n\\nexport default sensorRegistry;\\n'; \
   await Bun.write(ROOT + '/src/sensor-registry.ts', content); \
   console.log('Generated registry: ' + entries.length + ' sensor(s)'); \
@@ -48,6 +50,8 @@ RUN bun install --frozen-lockfile --production
 
 # Copy server, static assets, and sensor configs (needed at runtime for MQTT valueKey lookup)
 COPY server.ts index.html ./
+COPY src/server/ src/server/
+COPY src/types/ src/types/
 COPY --from=build /app/dist/ /app/dist/
 COPY sensors/ sensors/
 COPY public/ public/
@@ -63,7 +67,6 @@ ENV INFLUX_TOKEN=""
 ENV INFLUX_ORG=pi-sense
 ENV INFLUX_BUCKET=pi-sense
 ENV MQTT_URL=mqtt://mosquitto:1883
-ENV MQTT_TOPIC_PREFIX=pi-sensors/#
 
 EXPOSE 3141
 

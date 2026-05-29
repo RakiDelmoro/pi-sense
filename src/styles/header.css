@@ -34,11 +34,10 @@
   background: linear-gradient(90deg, #00f0ff 0%, #0072ff 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  opacity: 0;
-  transform: translateX(-70px); /* Start deep behind the logo */
-  transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.35s ease;
-  padding-left: 6px; /* Spacing adjusted for letter tracking */
-  z-index: 1; /* Slide out from underneath/behind the logo */
+  opacity: 1;
+  transform: translateX(0);
+  padding-left: 6px;
+  z-index: 1;
   white-space: nowrap;
   pointer-events: none;
   filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.45));
@@ -46,11 +45,6 @@
 
 .header-logo-container:hover .header-logo {
   transform: scale(1.05);
-}
-
-.header-logo-container:hover .header-logo-text {
-  opacity: 1;
-  transform: translateX(0); /* Slides out smoothly to the right into its post-logo position */
 }
 
 .header-brand {

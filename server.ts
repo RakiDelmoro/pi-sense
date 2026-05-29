@@ -4,7 +4,7 @@ import {
   deleteInfluxData,
   blockedTopics,
   isValidTopic,
-  INFLUX_BUCKET,
+  getInfluxBucket,
 } from './src/server/services/influx';
 import {
   wsClients,
@@ -19,6 +19,14 @@ import {
   cachedCSS,
 } from './src/server/services/builder';
 import { startMqttBridge } from './src/server/bridge/mqtt';
+
+// Sanitize env vars — Windows CRLF .env files and Docker env_file can inject trailing whitespace
+for (const [k, v] of Object.entries(process.env)) {
+  if (typeof v === 'string') {
+    const trimmed = v.trim();
+    if (trimmed !== v) process.env[k] = trimmed;
+  }
+}
 
 const PORT = parseInt(process.env.PORT || '3141');
 const ROOT = import.meta.dir;
@@ -197,4 +205,4 @@ const server = Bun.serve({
 
 console.log(`🔥 Pi Sense server → http://localhost:${PORT}`);
 console.log(`   WebSocket endpoint → ws://localhost:${PORT}/ws`);
-console.log(`   InfluxDB bucket → ${INFLUX_BUCKET}`);
+console.log(`   InfluxDB bucket → ${getInfluxBucket()}`);

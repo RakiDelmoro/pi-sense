@@ -8,13 +8,16 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3141:3141"
+    environment:
+      - MQTT_USERNAME=${MQTT_USERNAME}
+      - MQTT_PASSWORD=${MQTT_PASSWORD}
     env_file:
       - .env
     depends_on:
       influxdb:
         condition: service_healthy
       mosquitto:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
 
   # ── InfluxDB (time-series database) ─────────────────────────
@@ -55,6 +58,11 @@ services:
       - ./mosquitto-entrypoint.sh:/docker-entrypoint.sh:ro
     entrypoint: ["sh", "/docker-entrypoint.sh"]
     command: ["/usr/sbin/mosquitto", "-c", "/mosquitto/config/mosquitto.conf"]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 1883"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
 volumes:

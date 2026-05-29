@@ -6,7 +6,13 @@ import { Starfield } from './components/starfield';
 // Contains static imports for all sensors/*/sensor.tsx files
 import sensorRegistry from './sensor-registry';
 
-const sensorCards = sensorRegistry.map(({ slug, Component }) => (
+const sortedRegistry = [...sensorRegistry].sort((a, b) => {
+  const weightA = a.config.layoutWeight ?? 999;
+  const weightB = b.config.layoutWeight ?? 999;
+  return weightA - weightB;
+});
+
+const sensorCards = sortedRegistry.map(({ slug, Component }) => (
   <Component key={slug} />
 ));
 
