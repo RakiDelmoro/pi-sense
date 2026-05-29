@@ -59,7 +59,6 @@ sensors/<slug>/
 └── sensor.css     # scoped styles
 ```
 
-All sensor topics must start with `pi-sensors/` — the server subscribes to `pi-sensors/#`.
 
 ### 4. Verify with live data
 
