@@ -71,6 +71,8 @@ Open **http://localhost:3141** — you should see the temperature card update wi
 - The topic matches the one defined in `sensors/<slug>/config.ts`
 - The dashboard server is running (`bun start`)
 
+Something not working? Ask [Pi](https://pi.dev/) — paste the error or describe what's off and let it debug for you.
+
 ---
 
 ## Production
