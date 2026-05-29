@@ -10,25 +10,9 @@
 
 ---
 
-## 🛠 Setup & Installing Pi
-
-To design and build this project, you need to install the **Pi Coding Agent CLI**.
-
-```bash
-# Install Pi globally via Bun or npm
-bun install -g @earendil-works/pi-coding-agent
-# or
-npm install -g @earendil-works/pi-coding-agent
-```
-
-Once installed, you can start the interactive harness directly in this directory:
-```bash
-pi
-```
-
----
-
 ## Development
+
+*Build and iterate locally — spin up the stack, create sensor cards, and see changes in real time.*
 
 ### 1. Open the dev container
 
@@ -53,6 +37,11 @@ bun start
 Open **http://localhost:3141** — the dashboard is live.
 
 ### 3. Create sensor cards
+Start the Pi interactive harness:
+
+```bash
+pi
+```
 
 Tell [Pi](https://pi.dev/) what you want. It generates the card, wires the data, renders the visualization.
 
@@ -72,15 +61,22 @@ sensors/<slug>/
 
 All sensor topics must start with `pi-sensors/` — the server subscribes to `pi-sensors/#`.
 
-### 4. Test with live data
+### 4. Verify with live data
 
 ```bash
 mosquitto_pub -t "pi-sensors/temperature" -m '{"value": 23.5}'
 ```
 
+Open **http://localhost:3141** — you should see the temperature card update with `23.5`. If the card doesn't respond, check that:
+- The MQTT broker is running (`pi-sense-dev-mosquitto`)
+- The topic matches the one defined in `sensors/<slug>/config.ts`
+- The dashboard server is running (`bun start`)
+
 ---
 
 ## Production
+
+*Ship it — configure real credentials, deploy with Docker, and keep your sensor data safe.*
 
 ### 1. Configure
 
@@ -90,25 +86,16 @@ cp .env.example .env
 
 Edit `.env` — replace all `change-me-in-production` values with real credentials.
 
-### 2. Build and run
+### 2. Build and run (also used for deploying updates)
 
 ```bash
 docker compose -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-### 3. Deploy updates (preserves existing data)
+Same commands for first deploy and updates — only the dashboard container is rebuilt, InfluxDB data is preserved.
 
-When you add new sensor cards in dev and want to ship them to production:
-
-```bash
-docker compose -f docker-compose.prod.yml build
-docker compose -f docker-compose.prod.yml up -d
-```
-
-Existing sensor data in InfluxDB is preserved — only the dashboard container is recreated with the new image.
-
-### 4. Management commands
+### 3. Management commands
 
 | Command | What it does | Data impact |
 |---------|--------------|-------------|
