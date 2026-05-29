@@ -63,7 +63,7 @@ sensors/<slug>/
 ### 4. Verify with live data
 
 ```bash
-mosquitto_pub -t "pi-sensors/temperature" -m '{"value": 23.5}'
+mosquitto_pub -h localhost -p 1883 -t "pi-sensors/temperature" -m '{"value": 23.5}'
 ```
 
 Open **http://localhost:3141** — you should see the temperature card update with `23.5`. If the card doesn't respond, check that:
