@@ -2,6 +2,7 @@
  * Local type declarations for @earendil-works/pi-coding-agent
  * Covers only the types used by our PPQ provider extension.
  */
+declare module "@earendil-works/pi-coding-agent" {
 	export type ProviderModelConfig = {
 		id: string;
 		name: string;
