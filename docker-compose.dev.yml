@@ -8,9 +8,6 @@ services:
     volumes:
       # Project source (bind mount)
       - .:/workspaces/pi-sense
-      # Persist entire home directory so user-installed tools survive
-      # container restarts (npm -g, bun -g, pi install, apt, etc.)
-      - home-data:/root
     command: sleep infinity
     depends_on:
       influxdb:
@@ -52,4 +49,4 @@ services:
 
 volumes:
   influxdb-data:
-  home-data:
+
