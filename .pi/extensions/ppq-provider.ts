@@ -6,7 +6,34 @@
  * Or env var PPQ_API_KEY.
  */
 
-import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+// --- Type definitions ---
+export type ProviderModelConfig = {
+	id: string;
+	name: string;
+	api: string;
+	reasoning: boolean;
+	input: ("text" | "image")[];
+	cost: {
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+	};
+	contextWindow: number;
+};
+
+export interface ExtensionAPI {
+	registerProvider(
+		name: string,
+		config: {
+			baseUrl: string;
+			api: string;
+			apiKey: string;
+			models: ProviderModelConfig[];
+			defaultModel?: string;
+		},
+	): void;
+}
 
 // --- inlined fp-sdk helpers (replaces OptionHelpers.ofObj / Some) ---
 function ofObj<T>(val: T | null | undefined): T | null {
@@ -114,11 +141,22 @@ export default async function (pi: ExtensionAPI) {
 	const apiModels = await fetchPpqModels();
 	const models = await filterPpqModels(apiModels);
 	if (models.length > 0) {
+		// Set default model to the first one (autoclaw, auto, or first available)
+		const defaultModel = models[0].id;
 		pi.registerProvider("ppq", {
 			baseUrl: ppqApiBaseUrl,
 			api: "openai-completions",
 			apiKey: "$PPQ_API_KEY",
 			models: models,
+			defaultModel: defaultModel,
 		});
+
+		// Show welcome message
+		console.log('\n✓ PPQ.ai provider configured successfully!');
+		console.log(`✓ ${models.length} models available, using '${defaultModel}' by default`);
+		console.log('✓ To see all models: /models');
+		console.log('✓ To switch models: /model <model-name>\n');
+	} else {
+		console.log('\n⚠ PPQ.ai provider: No models available. Please check your API key.\n');
 	}
 }
