@@ -8,8 +8,6 @@ services:
     volumes:
       # Project source (bind mount)
       - .:/workspaces/pi-sense
-      # Separate volume for node_modules so host OS doesn't interfere
-      - node-modules-data:/workspaces/pi-sense/node_modules
       # Persist entire home directory so user-installed tools survive
       # container restarts (npm -g, bun -g, pi install, apt, etc.)
       - home-data:/root
@@ -23,13 +21,15 @@ services:
   influxdb:
     container_name: pi-sense-dev-influxdb
     image: influxdb:2.7
+    env_file:
+      - .env.development
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=admin
-      - DOCKER_INFLUXDB_INIT_PASSWORD=pi-sense-admin
-      - DOCKER_INFLUXDB_INIT_ORG=pi-sense
-      - DOCKER_INFLUXDB_INIT_BUCKET=pi-sense
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=pi-sense-dev-token
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USERNAME}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUX_ORG}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUX_BUCKET}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_TOKEN}
     volumes:
       - influxdb-data:/var/lib/influxdb2
     ports:
@@ -52,5 +52,4 @@ services:
 
 volumes:
   influxdb-data:
-  node-modules-data:
   home-data:

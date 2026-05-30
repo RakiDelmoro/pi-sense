@@ -2,9 +2,7 @@
 node_modules
 
 # Environment — contains tokens and passwords
-.env
-.env.*
-!.env.example
+.env.production
 
 # Build output
 dist/

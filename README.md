@@ -82,10 +82,10 @@ Something not working? Ask [Pi](https://pi.dev/) — paste the error or describe
 ### 1. Configure
 
 ```bash
-cp .env.example .env
+cp .env.development .env.production
 ```
 
-Edit `.env` — replace all `change-me-in-production` values with real credentials.
+Edit `.env.production` — replace all lines marked with ⚠️ with real credentials.
 
 ### 2. Build and run (also used for deploying updates)
 

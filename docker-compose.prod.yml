@@ -12,7 +12,7 @@ services:
       - MQTT_USERNAME=${MQTT_USERNAME}
       - MQTT_PASSWORD=${MQTT_PASSWORD}
     env_file:
-      - .env
+      - .env.production
     depends_on:
       influxdb:
         condition: service_healthy
@@ -27,13 +27,15 @@ services:
     container_name: pi-sense-prod-influxdb
     image: influxdb:2.7
     # No ports mapping — not exposed to the network
+    env_file:
+      - .env.production
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USERNAME:-admin}
-      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD:-pi-sense-admin}
-      - DOCKER_INFLUXDB_INIT_ORG=${INFLUX_ORG:-pi-sense}
-      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUX_BUCKET:-pi-sense}
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_TOKEN:-pi-sense-dev-token}
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USERNAME}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUX_ORG}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUX_BUCKET}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_TOKEN}
     volumes:
       - influxdb-data:/var/lib/influxdb2
     healthcheck:
