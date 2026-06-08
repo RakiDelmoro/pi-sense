@@ -8,6 +8,13 @@ services:
     volumes:
       # Project source (bind mount)
       - .:/workspaces/pi-sense
+    environment:
+      - PORT=3141
+      - INFLUX_URL=http://influxdb:8086
+      - INFLUX_TOKEN=pi-sense-dev-token
+      - INFLUX_ORG=pi-sense
+      - INFLUX_BUCKET=pi-sense
+      - MQTT_URL=mqtt://mosquitto:1883
     command: sleep infinity
     depends_on:
       influxdb:
@@ -18,15 +25,17 @@ services:
   influxdb:
     container_name: pi-sense-dev-influxdb
     image: influxdb:2.7
-    env_file:
-      - .env.development
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USERNAME}
-      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD}
-      - DOCKER_INFLUXDB_INIT_ORG=${INFLUX_ORG}
-      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUX_BUCKET}
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_TOKEN}
+      - DOCKER_INFLUXDB_INIT_USERNAME=admi
+      - DOCKER_INFLUXDB_INIT_PASSWORD=pi-sense-admin
+      - DOCKER_INFLUXDB_INIT_ORG=pi-sense
+      - DOCKER_INFLUXDB_INIT_BUCKET=pi-sense
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=pi-sense-dev-token
+      - INFLUX_URL=http://influxdb:8086
+      - INFLUX_TOKEN=pi-sense-dev-token
+      - INFLUX_ORG=pi-sense
+      - INFLUX_BUCKET=pi-sense
     volumes:
       - influxdb-data:/var/lib/influxdb2
     ports:

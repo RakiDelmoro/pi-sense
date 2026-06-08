@@ -9,10 +9,14 @@ services:
     ports:
       - "3141:3141"
     environment:
-      - MQTT_USERNAME=${MQTT_USERNAME}
-      - MQTT_PASSWORD=${MQTT_PASSWORD}
-    env_file:
-      - .env.production
+      - PORT=3141
+      - INFLUX_URL=http://influxdb:8086
+      - INFLUX_TOKEN= # ⚠️ set before deploying
+      - INFLUX_ORG=pi-sense
+      - INFLUX_BUCKET=pi-sense
+      - MQTT_URL=mqtt://mosquitto:1883
+      - MQTT_USERNAME= # ⚠️ set before deploying
+      - MQTT_PASSWORD= # ⚠️ set before deploying
     depends_on:
       influxdb:
         condition: service_healthy
@@ -26,16 +30,13 @@ services:
   influxdb:
     container_name: pi-sense-prod-influxdb
     image: influxdb:2.7
-    # No ports mapping — not exposed to the network
-    env_file:
-      - .env.production
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USERNAME}
-      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD}
-      - DOCKER_INFLUXDB_INIT_ORG=${INFLUX_ORG}
-      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUX_BUCKET}
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_TOKEN}
+      - DOCKER_INFLUXDB_INIT_USERNAME= # ⚠️ set before deploying
+      - DOCKER_INFLUXDB_INIT_PASSWORD= # ⚠️ set before deploying
+      - DOCKER_INFLUXDB_INIT_ORG=pi-sense
+      - DOCKER_INFLUXDB_INIT_BUCKET=pi-sense
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN= # ⚠️ set before deploying
     volumes:
       - influxdb-data:/var/lib/influxdb2
     healthcheck:
@@ -52,8 +53,8 @@ services:
     ports:
       - "1883:1883"
     environment:
-      - MQTT_USERNAME=${MQTT_USERNAME}
-      - MQTT_PASSWORD=${MQTT_PASSWORD}
+      - MQTT_USERNAME= # ⚠️ set before deploying
+      - MQTT_PASSWORD= # ⚠️ set before deploying
     volumes:
       - ./mosquitto-prod.conf:/mosquitto/config/mosquitto.conf
       - mosquitto-data:/mosquitto/config/auth
