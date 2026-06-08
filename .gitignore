@@ -1,8 +1,8 @@
 # Dependencies
 node_modules
 
-# Environment — contains tokens and passwords
-.env.production
+# Environment — local overrides only
+.env.local
 
 # Build output
 dist/
