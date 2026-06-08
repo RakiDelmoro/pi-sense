@@ -81,11 +81,7 @@ Something not working? Ask [Pi](https://pi.dev/) — paste the error or describe
 
 ### 1. Configure
 
-```bash
-cp .env.development .env.production
-```
-
-Edit `.env.production` — replace all lines marked with ⚠️ with real credentials.
+Edit `docker-compose.prod.yml` — fill in every line marked with `# ⚠️ set before deploying`.
 
 ### 2. Build and run (also used for deploying updates)
 

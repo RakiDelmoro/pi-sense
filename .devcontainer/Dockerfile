@@ -1,6 +1,6 @@
 FROM oven/bun:debian
 
-RUN apt-get update && apt-get install -y git curl && \
+RUN apt-get update && apt-get install -y git curl mosquitto-clients && \
     rm -rf /var/lib/apt/lists/*
 
 # Make bun (installed for 'bun' user) + root's global bin accessible
