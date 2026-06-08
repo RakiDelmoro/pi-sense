@@ -9,6 +9,11 @@ import {
 } from '../services/influx';
 import { broadcastUpdate } from '../services/websocket';
 
+/** Quote unquoted JSON keys so `{water_level: 42}` → `{"water_level": 42}` */
+function quoteJsonKeys(raw: string): string {
+  return raw.replace(/([,{\s])([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
+}
+
 export function startMqttBridge() {
   const mqttUrl = (process.env.MQTT_URL || 'mqtt://localhost:1883').trim();
   const mqttUsername = process.env.MQTT_USERNAME?.trim() || undefined;
@@ -44,10 +49,13 @@ export function startMqttBridge() {
     let timestamp: string;
 
     try {
-      const data = JSON.parse(raw);
+      const data = JSON.parse(raw) || JSON.parse(quoteJsonKeys(raw));
       const key = topicValueKeys.get(topic) ?? 'value';
       value = Number(data[key] ?? data.value ?? data);
-      if (isNaN(value)) return;
+      if (isNaN(value)) {
+        console.warn(`⚠️  MQTT dropped: topic="${topic}" — value is NaN from key "${key}" in payload: ${raw}`);
+        return;
+      }
       const timeOffsetKey = topicTimeOffsetKeys.get(topic);
       if (timeOffsetKey && data[timeOffsetKey] != null) {
         timeOffsetMs = Number(data[timeOffsetKey]);
@@ -58,9 +66,14 @@ export function startMqttBridge() {
         : new Date().toISOString();
     } catch {
       value = Number(raw);
-      if (isNaN(value)) return;
+      if (isNaN(value)) {
+        console.warn(`⚠️  MQTT dropped: topic="${topic}" — not valid JSON and not a number: ${raw}`);
+        return;
+      }
       timestamp = new Date().toISOString();
     }
+
+    console.log(`📨 MQTT → ${topic}: ${value} ${raw}`);
 
     const point = new Point('sensor')
       .tag('topic', topic)

@@ -31,6 +31,7 @@ export function removeWs(ws: ServerWebSocket) {
 export function broadcastUpdate(topic: string, value: number, timestamp: string, timeOffsetMs?: number) {
   const msg = JSON.stringify({ topic, value, timestamp, ...(timeOffsetMs != null && { timeOffsetMs }) });
   const subs = topicSubs.get(topic);
+  console.log(`📤 WS → ${topic}: ${value} (${subs?.size ?? 0} clients)`);
   if (subs) {
     for (const ws of subs) {
       ws.send(msg);
