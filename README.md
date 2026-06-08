@@ -62,8 +62,16 @@ sensors/<slug>/
 
 ### 4. Verify with live data
 
+**Inside the dev container** (Linux shell):
+
 ```bash
 mosquitto_pub -h localhost -p 1883 -t "pi-sensors/temperature" -m '{"value": 23.5}'
+```
+
+**From Windows PowerShell** (host machine) — use `--%` to stop PowerShell from stripping quotes:
+
+```powershell
+mosquitto_pub --% -h localhost -p 1883 -t "pi-sensors/temperature" -m "{\"value\": 23.5}"
 ```
 
 Open **http://localhost:3141** — you should see the temperature card update with `23.5`. If the card doesn't respond, check that:
@@ -101,6 +109,24 @@ Same commands for first deploy and updates — only the dashboard container is r
 | `docker compose -f docker-compose.prod.yml down -v` | Stop and **delete all volumes** | ⚠️ **All data wiped** |
 
 > **⚠️ `down -v` is destructive** — it permanently deletes InfluxDB sensor history and Mosquitto credentials. Use it only when you want a completely fresh start (e.g., changing credentials, corrupted data).
+
+### 4. Debug with logs
+
+Tail logs from any service to trace MQTT messages, WebSocket broadcasts, and database activity:
+
+| Service | Container name | Command |
+|---------|---------------|---------|
+| Dashboard (Pi Sense) | `pi-sense-prod-dashboard` | `docker logs -f pi-sense-prod-dashboard` |
+| Mosquitto (MQTT) | `pi-sense-prod-mosquitto` | `docker logs -f pi-sense-prod-mosquitto` |
+| InfluxDB | `pi-sense-prod-influxdb` | `docker logs -f pi-sense-prod-influxdb` |
+
+**What you'll see:**
+
+- **Dashboard**: `📨 MQTT → esp/water-level: 42 {"water_level":42}`, `📤 WS → esp/water-level: 50.0 (2 clients)`, `⚠️` warnings on dropped/invalid messages
+- **Mosquitto**: client connections/disconnections, topic subscriptions, published messages
+- **InfluxDB**: write errors, query stats, health checks
+
+**Dev container** logs work the same way — the server prints `📨` and `📤` lines directly to the terminal running `bun start`.
 
 ---
 
