@@ -1,70 +1,7 @@
 .header {
   display: flex;
   align-items: center;
-  justify-content: center;
   height: 100%;
   padding: 0 12px;
   width: 100%;
-}
-
-.header-logo-container {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  position: relative;
-  overflow: hidden; /* Clips the "Sense" word while it starts inside/behind the logo */
-  height: 42px;
-  padding: 0 4px;
-}
-
-.header-logo {
-  height: 42px;
-  width: auto;
-  object-fit: contain;
-  transition: transform 0.3s ease;
-  z-index: 2; /* Keep logo on top of the sliding text */
-}
-
-.header-logo-text {
-  font-family: 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: 1.55rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  background: linear-gradient(90deg, #00f0ff 0%, #0072ff 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  opacity: 1;
-  transform: translateX(0);
-  padding-left: 6px;
-  z-index: 1;
-  white-space: nowrap;
-  pointer-events: none;
-  filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.45));
-}
-
-.header-logo-container:hover .header-logo {
-  transform: scale(1.05);
-}
-
-.header-brand {
-  font-size: 1.1rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  text-transform: lowercase;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.header-brand__pi {
-  color: var(--color-text-secondary);
-  font-weight: 400;
-}
-
-.header-brand__sense {
-  background: linear-gradient(135deg, #0cebeb 0%, #20e3b2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  font-weight: 800;
 }

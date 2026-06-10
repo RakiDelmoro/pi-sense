@@ -1,7 +1,8 @@
 # Dependencies
 node_modules
 
-# Environment — local overrides only
+# Environment — secrets and local overrides
+.env
 .env.local
 
 # Build output

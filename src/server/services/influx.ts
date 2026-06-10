@@ -81,7 +81,7 @@ export async function queryLatest(topic: string): Promise<{ value: number; times
 
   const flux = `
     from(bucket: "${getInfluxBucket()}")
-      |> range(start: -24h)
+      |> range(start: -1y)
       |> filter(fn: (r) => r._measurement == "sensor" and r.topic == "${topic}")
       ${lastBeforePivot ? '|> last()' : ''}
       ${pivotClause}

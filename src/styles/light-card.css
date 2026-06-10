@@ -1,0 +1,166 @@
+/* ── Light-on color ─────────────────────────────────────────── */
+
+.light-card {
+  --light-on: #facc15;
+  --light-on-rgb: 250, 204, 21;
+}
+
+.light-card--unreachable {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.light-card .sensor-card__header {
+  justify-content: space-between;
+}
+
+.light-card__badge {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 2px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* ── Card body — centered ───────────────────────────────────── */
+
+.light-card .sensor-card__body {
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Bulb — clickable, big and centered ─────────────────────── */
+
+.light-card__bulb {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100px;
+  height: 128px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.light-card__bulb:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.light-card__bulb:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.light-card__bulb-icon {
+  position: relative;
+  z-index: 1;
+  width: 100px;
+  height: 128px;
+}
+
+/* ── Radiance (ambient glow behind bulb) ─────────────────────── */
+
+.light-card__bulb-radiance {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 140px;
+  height: 140px;
+  transform: translate(-50%, -55%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(250, 204, 21, 0.35) 0%, rgba(250, 204, 21, 0) 70%);
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.3s ease;
+}
+
+/* ── Bulb SVG elements ──────────────────────────────────────── */
+
+.light-card__bulb-glass {
+  stroke-width: 1.5;
+  transition: fill 0.3s ease, stroke 0.3s ease;
+}
+
+.light-card__bulb-filament {
+  stroke-width: 1.8;
+  fill: none;
+  transition: stroke 0.3s ease;
+}
+
+.light-card__bulb-base {
+  fill: #3f3f46;
+}
+
+/* ── Hover ──────────────────────────────────────────────────── */
+
+.light-card__bulb:hover:not(:disabled) .light-card__bulb-glass {
+  stroke-width: 2;
+}
+
+/* ── Brightness slider ──────────────────────────────────────── */
+
+.light-card__brightness {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.light-card__slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    rgba(var(--light-on-rgb), 0.55) 0%,
+    rgba(var(--light-on-rgb), 0.55) var(--slider-fill, 0%),
+    var(--color-border) var(--slider-fill, 0%),
+    var(--color-border) 100%
+  );
+  outline: none;
+  cursor: pointer;
+}
+
+.light-card__slider:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.light-card__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--light-on);
+  cursor: pointer;
+  border: 2px solid var(--color-surface);
+  box-shadow: 0 0 6px rgba(var(--light-on-rgb), 0.4);
+}
+
+.light-card__slider::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 12px rgba(var(--light-on-rgb), 0.6);
+}
+
+.light-card__slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--light-on);
+  cursor: pointer;
+  border: 2px solid var(--color-surface);
+  box-shadow: 0 0 6px rgba(var(--light-on-rgb), 0.4);
+}
+
+.light-card__slider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border);
+}

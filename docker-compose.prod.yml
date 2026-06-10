@@ -10,6 +10,8 @@ services:
       - "3141:3141"
     environment:
       - PORT=3141
+      - HUE_BRIDGE_IP= # ⚠️ set before deploying
+      - HUE_API_KEY= # ⚠️ set before deploying
       - INFLUX_URL=http://influxdb:8086
       - INFLUX_TOKEN= # ⚠️ set before deploying
       - INFLUX_ORG=pi-sense

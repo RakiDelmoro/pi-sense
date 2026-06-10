@@ -1,0 +1,217 @@
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 200px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 12px;
+  background-color: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  gap: 8px;
+  transition: width 0.2s ease, padding 0.2s ease;
+  overflow: hidden;
+}
+
+.sidebar--collapsed {
+  width: 60px;
+  padding: 20px 8px;
+}
+
+/* ── Logo row ───────────────────────────────────────────────── */
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.sidebar-logo-img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.sidebar-logo:hover .sidebar-logo-img {
+  transform: scale(1.05);
+}
+
+.sidebar-logo-text {
+  font-family: 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 1.35rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: linear-gradient(90deg, #00f0ff 0%, #0072ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  white-space: nowrap;
+  filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.45));
+  transition: opacity 0.2s ease, width 0.2s ease;
+}
+
+.sidebar--collapsed .sidebar-logo-text {
+  display: none;
+}
+
+/* ── Toggle button (inline with logo) ───────────────────────── */
+
+.sidebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.sidebar-toggle:hover {
+  background-color: var(--color-accent-dim);
+  color: var(--color-text);
+}
+
+.sidebar-toggle-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.sidebar--collapsed .sidebar-toggle {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-left: 0;
+  width: 36px;
+  height: 36px;
+  background: var(--color-accent-dim);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  color: var(--color-accent);
+}
+
+/* ── Navigation list ────────────────────────────────────────── */
+
+.sidebar-nav {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ── Navigation item ────────────────────────────────────────── */
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--color-text-muted);
+  transition: background-color 0.15s ease, color 0.15s ease;
+  user-select: none;
+  white-space: nowrap;
+  gap: 10px;
+}
+
+.sidebar-nav-item:hover {
+  background-color: var(--color-accent-dim);
+  color: var(--color-text);
+}
+
+.sidebar-nav-item--active {
+  background-color: var(--color-accent-dim);
+  color: var(--color-accent);
+}
+
+/* ── Section icon ───────────────────────────────────────────── */
+
+.sidebar-nav-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.sidebar-nav-item--active .sidebar-nav-icon {
+  color: var(--color-accent);
+}
+
+/* ── Label ──────────────────────────────────────────────────── */
+
+.sidebar-nav-label {
+  font-family: 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sidebar--collapsed .sidebar-nav-label {
+  display: none;
+}
+
+/* Collapsed: center items */
+.sidebar--collapsed .sidebar-nav-item {
+  justify-content: center;
+  padding: 10px 0;
+}
+
+.sidebar--collapsed .sidebar-logo {
+  justify-content: center;
+  padding: 0;
+}
+
+/* ── Mobile ─────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: static;
+    width: 100%;
+    flex-direction: column;
+    padding: 8px 12px;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+    border-radius: 0;
+    gap: 6px;
+  }
+
+  .sidebar--collapsed {
+    width: 100%;
+    padding: 8px 12px;
+  }
+
+  .sidebar-logo {
+    display: none;
+  }
+
+  .sidebar-toggle {
+    display: none;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    gap: 6px;
+    overflow-x: auto;
+  }
+
+  .sidebar-nav-item {
+    padding: 8px 16px;
+    white-space: nowrap;
+  }
+
+  .sidebar--collapsed .sidebar-nav-label {
+    display: initial;
+  }
+}

@@ -85,13 +85,15 @@ Something not working? Ask [Pi](https://pi.dev/) — paste the error or describe
 
 ## Production
 
-*Ship it — configure real credentials, deploy with Docker, and keep your sensor data safe.*
+*Ship it — configure real credentials, build the Docker image, and deploy anywhere. No project directory needed in production.*
 
 ### 1. Configure
 
 Edit `docker-compose.prod.yml` — fill in every line marked with `# ⚠️ set before deploying`.
 
-### 2. Build and run (also used for deploying updates)
+### 2. Build and run on the same machine
+
+If you're deploying on the same machine where you're building:
 
 ```bash
 docker compose -f docker-compose.prod.yml build
@@ -100,33 +102,95 @@ docker compose -f docker-compose.prod.yml up -d
 
 Same commands for first deploy and updates — only the dashboard container is rebuilt, InfluxDB data is preserved.
 
-### 3. Management commands
+### 3. Cross-platform build — export as tar
 
-| Command | What it does | Data impact |
-|---------|--------------|-------------|
-| `docker compose -f docker-compose.prod.yml down` | Stop all containers | ✅ Data preserved |
-| `docker compose -f docker-compose.prod.yml up -d` | Start all containers | ✅ Data preserved |
-| `docker compose -f docker-compose.prod.yml down -v` | Stop and **delete all volumes** | ⚠️ **All data wiped** |
+When the target platform differs from your build machine (e.g. building on x86_64 for a Raspberry Pi 4), use Docker buildx for cross-compilation.
 
-> **⚠️ `down -v` is destructive** — it permanently deletes InfluxDB sensor history and Mosquitto credentials. Use it only when you want a completely fresh start (e.g., changing credentials, corrupted data).
+**Create a buildx builder (one-time):**
 
-### 4. Debug with logs
+```bash
+docker buildx create --name pi-builder --use
+docker buildx inspect --bootstrap
+```
 
-Tail logs from any service to trace MQTT messages, WebSocket broadcasts, and database activity:
+**Build for a specific platform and save as tar:**
 
-| Service | Container name | Command |
-|---------|---------------|---------|
-| Dashboard (Pi Sense) | `pi-sense-prod-dashboard` | `docker logs -f pi-sense-prod-dashboard` |
-| Mosquitto (MQTT) | `pi-sense-prod-mosquitto` | `docker logs -f pi-sense-prod-mosquitto` |
-| InfluxDB | `pi-sense-prod-influxdb` | `docker logs -f pi-sense-prod-influxdb` |
+| Target | Command |
+|--------|--------|
+| Raspberry Pi 4 / ARM64 | `docker buildx build --platform linux/arm64 --output type=docker,dest=pi-sense-prod.tar -t pi-sense-prod:latest -f Dockerfile .` |
+| Linux x86_64 | `docker buildx build --platform linux/amd64 --output type=docker,dest=pi-sense-prod.tar -t pi-sense-prod:latest -f Dockerfile .` |
+| Windows (WSL2 + Docker) | `docker buildx build --platform linux/amd64 --output type=docker,dest=pi-sense-prod.tar -t pi-sense-prod:latest -f Dockerfile .` |
 
-**What you'll see:**
+**Transfer the image to the target machine:**
 
-- **Dashboard**: `📨 MQTT → esp/water-level: 42 {"water_level":42}`, `📤 WS → esp/water-level: 50.0 (2 clients)`, `⚠️` warnings on dropped/invalid messages
-- **Mosquitto**: client connections/disconnections, topic subscriptions, published messages
-- **InfluxDB**: write errors, query stats, health checks
+```bash
+scp pi-sense-prod.tar user@<TARGET_IP>:~/
+```
 
-**Dev container** logs work the same way — the server prints `📨` and `📤` lines directly to the terminal running `bun start`.
+**On the target machine, load and run:**
+
+```bash
+docker load -i pi-sense-prod.tar
+
+docker run -d --name pi-sense \
+  -p 3141:3141 \
+  -e HUE_BRIDGE_IP=<hue-bridge-ip> \
+  -e HUE_API_KEY=<your-api-key> \
+  -e INFLUX_URL=http://influxdb:8086 \
+  -e INFLUX_TOKEN=<your-token> \
+  -e INFLUX_ORG=pi-sense \
+  -e INFLUX_BUCKET=pi-sense \
+  -e MQTT_URL=mqtt://mosquitto:1883 \
+  -e MQTT_USERNAME=<your-mqtt-user> \
+  -e MQTT_PASSWORD=<your-mqtt-pass> \
+  pi-sense-prod:latest
+```
+
+
+
+### 4. Updating production — without losing data
+
+The dashboard is **stateless** — all sensor history lives in InfluxDB and Mosquitto volumes, which persist across updates. Only the dashboard container gets swapped; data stays intact.
+
+**With docker compose (full stack on the Pi):**
+
+```bash
+# 1. Build new image on your dev machine
+docker buildx build --platform linux/arm64 --output type=docker,dest=pi-sense-prod.tar -t pi-sense-prod:latest -f Dockerfile .
+
+# 2. Transfer to Pi
+scp pi-sense-prod.tar user@<PI_IP>:~/
+
+# 3. On the Pi: load the new image and recreate only the dashboard
+docker load -i pi-sense-prod.tar
+docker compose -f docker-compose.prod.yml up -d dashboard
+```
+
+**With docker run (standalone dashboard only):**
+
+```bash
+# 1. Build new image on your dev machine
+docker buildx build --platform linux/arm64 --output type=docker,dest=pi-sense-prod.tar -t pi-sense-prod:latest -f Dockerfile .
+
+# 2. Transfer to Pi
+scp pi-sense-prod.tar user@<PI_IP>:~/
+
+# 3. On the Pi: swap the old container for the new one
+docker stop pi-sense && docker rm pi-sense
+docker load -i pi-sense-prod.tar
+docker run -d --name pi-sense \
+  -p 3141:3141 \
+  -e HUE_BRIDGE_IP=<hue-bridge-ip> \
+  -e HUE_API_KEY=<your-api-key> \
+  -e INFLUX_URL=http://influxdb:8086 \
+  -e INFLUX_TOKEN=<your-token> \
+  -e INFLUX_ORG=pi-sense \
+  -e INFLUX_BUCKET=pi-sense \
+  -e MQTT_URL=mqtt://mosquitto:1883 \
+  -e MQTT_USERNAME=<your-mqtt-user> \
+  -e MQTT_PASSWORD=<your-mqtt-pass> \
+  pi-sense-prod:latest
+```
 
 ---
 

@@ -28,11 +28,42 @@ for (const [k, v] of Object.entries(process.env)) {
   }
 }
 
+const HUE_BRIDGE_IP = process.env.HUE_BRIDGE_IP;
+const HUE_API_KEY = process.env.HUE_API_KEY;
+
+if (!HUE_BRIDGE_IP || !HUE_API_KEY) {
+  console.error('Missing required env vars: HUE_BRIDGE_IP and HUE_API_KEY must be set (e.g. in .env)');
+  process.exit(1);
+}
+
 const PORT = parseInt(process.env.PORT || '3141');
 const ROOT = import.meta.dir;
 
 function join(...parts: string[]) {
   return parts.join('/').replace(/\/+/g, '/');
+}
+
+async function hueFetch(path: string, init?: RequestInit): Promise<Response> {
+  const url = `http://${HUE_BRIDGE_IP}/api/${HUE_API_KEY}${path}`;
+  try {
+    const res = await fetch(url, init);
+    const data = await res.json();
+    // Hue returns errors as [{ error: { ... } }]
+    if (Array.isArray(data) && data[0]?.error) {
+      return new Response(JSON.stringify({ error: data[0].error.description }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify(data), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: 'Hue bridge unreachable' }), {
+      status: 502,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 }
 
 // Ensure build/pre-build load and starting services
@@ -43,7 +74,7 @@ startMqttBridge();
 // HTTP + WebSocket interface coordinator
 const server = Bun.serve({
   port: PORT,
-  fetch(req, server) {
+  async fetch(req, server) {
     const url = new URL(req.url);
     const pathname = url.pathname;
 
@@ -51,6 +82,23 @@ const server = Bun.serve({
     if (pathname === '/ws') {
       if (server.upgrade(req)) return;
       return new Response('WebSocket upgrade failed', { status: 500 });
+    }
+
+    // Hue: list all lights
+    if (pathname === '/api/hue/lights') {
+      return hueFetch('/lights');
+    }
+
+    // Hue: set light state
+    const lightStateMatch = pathname.match(/^\/api\/hue\/lights\/([\d]+)\/state$/);
+    if (req.method === 'PUT' && lightStateMatch) {
+      const id = lightStateMatch[1];
+      const body = await req.text();
+      return hueFetch(`/lights/${id}/state`, {
+        method: 'PUT',
+        body,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     // API: latest value for a topic
