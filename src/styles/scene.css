@@ -1,0 +1,182 @@
+/* ── Scenes section layout ──────────────────────────────────── */
+
+.scene-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  padding-top: 32px;
+}
+
+/* ── Scene card ───────────────────────────────────────────── */
+
+.scene-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 36px 24px 28px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.03) 0%, transparent 60%);
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  color: var(--color-text);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.15s ease, background 0.3s ease;
+}
+
+/* Subtle radial glow behind icon */
+.scene-btn::before {
+  content: '';
+  position: absolute;
+  top: 20%;
+  left: 50%;
+  width: 120px;
+  height: 120px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(var(--scene-color), 0.06) 0%, transparent 70%);
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  opacity: 0;
+}
+
+.scene-btn:hover:not(:disabled)::before {
+  opacity: 1;
+}
+
+.scene-btn:hover:not(:disabled) {
+  border-color: var(--color-text-muted);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+
+.scene-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+.scene-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Active state (radio behavior) ───────────────────────────── */
+
+.scene-btn--active {
+  border-color: rgba(var(--scene-color), 0.5);
+  box-shadow: 0 0 0 1px rgba(var(--scene-color), 0.15), 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.scene-btn--active::before {
+  opacity: 1;
+  background: radial-gradient(circle, rgba(var(--scene-color), 0.1) 0%, transparent 70%);
+}
+
+.scene-btn--active .scene-btn__label {
+  color: rgb(var(--scene-color));
+}
+
+.scene-btn--active .scene-btn__icon-wrap {
+  border-color: rgba(var(--scene-color), 0.25);
+  background: rgba(var(--scene-color), 0.08);
+}
+
+/* ── Relax variant ──────────────────────────────────────────── */
+
+.scene-btn--relax {
+  --scene-color: 139, 92, 246; /* violet */
+}
+
+/* ── Bright variant ─────────────────────────────────────────── */
+
+.scene-btn--bright {
+  --scene-color: 250, 204, 21; /* yellow */
+}
+
+/* ── Icon container ────────────────────────────────────────── */
+
+.scene-btn__icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+
+.scene-btn__svg {
+  width: 30px;
+  height: 30px;
+  color: var(--color-text-secondary);
+  transition: color 0.3s ease;
+}
+
+.scene-btn--active .scene-btn__svg {
+  color: rgb(var(--scene-color));
+}
+
+/* ── Text ──────────────────────────────────────────────────── */
+
+.scene-btn__label {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: color 0.3s ease;
+}
+
+.scene-btn__desc {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  line-height: 1.4;
+  max-width: 140px;
+}
+
+/* ── Active indicator dot ──────────────────────────────────── */
+
+.scene-btn__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgb(var(--scene-color));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  position: absolute;
+  top: 12px;
+  right: 14px;
+}
+
+.scene-btn--active .scene-btn__dot {
+  opacity: 1;
+}
+
+/* ── Spinner (while applying) ──────────────────────────────── */
+
+.scene-btn__spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-text-secondary);
+  border-radius: 50%;
+  animation: scene-spin 0.6s linear infinite;
+  margin-top: 2px;
+}
+
+@keyframes scene-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Mobile ────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .scene-grid {
+    grid-template-columns: 1fr;
+    max-width: 280px;
+  }
+}

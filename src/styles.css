@@ -1,6 +1,7 @@
 @import './styles/sensor-card.css';
 @import './styles/sidebar.css';
 @import './styles/light-card.css';
+@import './styles/scene.css';
 
 :root {
   --color-bg: #09090b;

@@ -10,11 +10,13 @@ interface SidebarProps {
 const sectionLabels: Record<string, string> = {
   sensors: 'Sensors',
   lights: 'Lights',
+  scenes: 'Scenes',
 };
 
 const sectionIcons: Record<string, string> = {
   sensors: 'M3 12h2l3-8 4 16 3-8h6',
   lights: 'M9 18h6M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z',
+  scenes: 'M4 6h2l2 10h8l2-10h2',
 };
 
 export function Sidebar({ sections, activeSection, onSelect }: SidebarProps) {

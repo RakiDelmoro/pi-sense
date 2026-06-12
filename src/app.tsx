@@ -7,9 +7,10 @@ import { useHueLights } from './hooks/use-hue';
 
 import sensorRegistry from './sensor-registry';
 import './styles/light-card.css';
+import './styles/scene.css';
 
 /** Fixed navigation sections in the sidebar. */
-const SECTIONS = ['sensors', 'lights'] as const;
+const SECTIONS = ['sensors', 'lights', 'scenes'] as const;
 
 const sortedRegistry = [...sensorRegistry].sort((a, b) => {
   const weightA = a.config.layoutWeight ?? 999;
@@ -17,6 +18,71 @@ const sortedRegistry = [...sensorRegistry].sort((a, b) => {
   return weightA - weightB;
 });
 
+/** Lights excluded from scene control — these keep their current brightness. */
+const SCENE_EXCLUDED = new Set([
+  'micah desk', 'micah bed',
+  'connie desk', 'connie bed',
+  'bathroom',
+]);
+
+const RELAX_BRI = 80;
+const BRIGHT_BRI = 254;
+
+function ScenesSection() {
+  const { lights, setLightState } = useHueLights();
+  const [busy, setBusy] = useState<string | null>(null);
+
+  // Determine active scene from current light states
+  const sceneLights = lights.filter(l => l.on && l.reachable && !SCENE_EXCLUDED.has(l.name.toLowerCase()));
+  const avgBri = sceneLights.length > 0
+    ? sceneLights.reduce((sum, l) => sum + l.brightness, 0) / sceneLights.length
+    : 0;
+  const activeScene = busy ?? (avgBri <= (RELAX_BRI + BRIGHT_BRI) / 2 ? 'relax' : 'bright');
+
+  const applyScene = async (name: string, bri: number) => {
+    setBusy(name);
+    const targets = lights.filter(l => l.on && l.reachable && !SCENE_EXCLUDED.has(l.name.toLowerCase()));
+    await Promise.all(targets.map(l => setLightState(l.id, { bri })));
+    setBusy(null);
+  };
+
+  return (
+    <div class="scene-grid">
+      <button
+        class={`scene-btn scene-btn--relax ${activeScene === 'relax' ? 'scene-btn--active' : ''}`}
+        disabled={busy !== null}
+        onClick={() => applyScene('relax', RELAX_BRI)}
+      >
+        <span class="scene-btn__dot" />
+        <div class="scene-btn__icon-wrap">
+          <svg class="scene-btn__svg" viewBox="0 0 32 32" fill="none">
+            <path d="M24 17A11 11 0 0 1 10 6.5 11 11 0 1 0 24 17z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+          </svg>
+        </div>
+        <span class="scene-btn__label">Relax</span>
+        <span class="scene-btn__desc">Dim non-bedroom lights</span>
+        {busy === 'relax' && <span class="scene-btn__spinner" />}
+      </button>
+      <button
+        class={`scene-btn scene-btn--bright ${activeScene === 'bright' ? 'scene-btn--active' : ''}`}
+        disabled={busy !== null}
+        onClick={() => applyScene('bright', BRIGHT_BRI)}
+      >
+        <span class="scene-btn__dot" />
+        <div class="scene-btn__icon-wrap">
+          <svg class="scene-btn__svg" viewBox="0 0 32 32" fill="none">
+            <path d="M16 3v4M16 25v4M3 16h4M25 16h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            <path d="M16 10a6 6 0 1 0 0 12 6 6 0 0 0 0-12z" fill="currentColor" opacity="0.15" stroke="currentColor" stroke-width="1.5" />
+            <path d="M7.5 7.5l2.8 2.8M21.7 21.7l2.8 2.8M7.5 24.5l2.8-2.8M21.7 10.3l2.8-2.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+        </div>
+        <span class="scene-btn__label">Bright</span>
+        <span class="scene-btn__desc">Full brightness on non-bedroom lights</span>
+        {busy === 'bright' && <span class="scene-btn__spinner" />}
+      </button>
+    </div>
+  );
+}
 function LightsSection() {
   const { lights, loading, error, setLightState } = useHueLights();
 
@@ -57,6 +123,8 @@ export function App() {
         <div class="dashboard-main">
           {activeSection === 'lights' ? (
             <LightsSection />
+          ) : activeSection === 'scenes' ? (
+            <ScenesSection />
           ) : sensorCards.length > 0 ? (
             <div class="sensor-grid">
               {sensorCards}
