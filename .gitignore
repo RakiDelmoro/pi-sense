@@ -11,8 +11,7 @@ dist/
 # Database storage
 .influxdb-data/
 
-# MQTT credentials — auto-generated in a Docker volume, never on host
-# mosquitto-credentials
+# MQTT credentials — baked into Docker image at build time, never on host
 
 # Pi agent internals — not part of the app
 .context/

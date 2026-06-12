@@ -3,22 +3,20 @@ name: pi-sense-prod
 services:
   dashboard:
     container_name: pi-sense-prod-dashboard
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "3141:3141"
+    image: pi-sense-dashboard:latest
     environment:
       - PORT=3141
-      - HUE_BRIDGE_IP= # ⚠️ set before deploying
-      - HUE_API_KEY= # ⚠️ set before deploying
+      - HUE_BRIDGE_IP=        # ⚠️ set before deploying
+      - HUE_API_KEY=          # ⚠️ set before deploying
       - INFLUX_URL=http://influxdb:8086
-      - INFLUX_TOKEN= # ⚠️ set before deploying
+      - INFLUX_TOKEN=         # ⚠️ set before deploying
       - INFLUX_ORG=pi-sense
       - INFLUX_BUCKET=pi-sense
       - MQTT_URL=mqtt://mosquitto:1883
-      - MQTT_USERNAME= # ⚠️ set before deploying
-      - MQTT_PASSWORD= # ⚠️ set before deploying
+      - MQTT_USERNAME=        # ⚠️ set before deploying
+      - MQTT_PASSWORD=        # ⚠️ set before deploying
+    ports:
+      - "3141:3141"
     depends_on:
       influxdb:
         condition: service_healthy
@@ -26,50 +24,26 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # ── InfluxDB (time-series database) ─────────────────────────
-  #  No ports exposed — internal only. Access via SSH tunnel if needed:
-  #    ssh -L 8086:localhost:8086 user@server
   influxdb:
     container_name: pi-sense-prod-influxdb
-    image: influxdb:2.7
+    image: pi-sense-influxdb:latest
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME= # ⚠️ set before deploying
-      - DOCKER_INFLUXDB_INIT_PASSWORD= # ⚠️ set before deploying
+      - DOCKER_INFLUXDB_INIT_USERNAME=  # ⚠️ set before deploying
+      - DOCKER_INFLUXDB_INIT_PASSWORD=  # ⚠️ set before deploying
       - DOCKER_INFLUXDB_INIT_ORG=pi-sense
       - DOCKER_INFLUXDB_INIT_BUCKET=pi-sense
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN= # ⚠️ set before deploying
     volumes:
       - influxdb-data:/var/lib/influxdb2
-    healthcheck:
-      test: ["CMD", "influx", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
     restart: unless-stopped
 
-  # ── Mosquitto (MQTT broker) ─────────────────────────────────
   mosquitto:
     container_name: pi-sense-prod-mosquitto
-    image: eclipse-mosquitto:2
+    image: pi-sense-mosquitto:latest
     ports:
       - "1883:1883"
-    environment:
-      - MQTT_USERNAME= # ⚠️ set before deploying
-      - MQTT_PASSWORD= # ⚠️ set before deploying
-    volumes:
-      - ./mosquitto-prod.conf:/mosquitto/config/mosquitto.conf
-      - mosquitto-data:/mosquitto/config/auth
-      - ./mosquitto-entrypoint.sh:/docker-entrypoint.sh:ro
-    entrypoint: ["sh", "/docker-entrypoint.sh"]
-    command: ["/usr/sbin/mosquitto", "-c", "/mosquitto/config/mosquitto.conf"]
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 1883"]
-      interval: 3s
-      timeout: 3s
-      retries: 10
     restart: unless-stopped
 
 volumes:
   influxdb-data:
-  mosquitto-data:

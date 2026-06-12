@@ -60,15 +60,6 @@ COPY public/ public/
 RUN groupadd -r app && useradd -r -g app app
 USER app
 
-# Runtime config (override with docker run -e or docker-compose)
-ENV PORT=3141
-ENV INFLUX_URL=http://influxdb:8086
-ENV INFLUX_ORG=pi-sense
-ENV INFLUX_BUCKET=pi-sense
-ENV MQTT_URL=mqtt://mosquitto:1883
-# Secrets — always pass at runtime, never set defaults here:
-#   INFLUX_TOKEN, HUE_API_KEY, MQTT_USERNAME, MQTT_PASSWORD
-
 EXPOSE 3141
 
 CMD ["bun", "server.ts"]

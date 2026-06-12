@@ -1,0 +1,8 @@
+# InfluxDB for Pi Sense production
+# Thin wrapper over the official image with a baked-in healthcheck.
+# All configuration is baked at build time from .env.
+
+FROM influxdb:2.7
+
+HEALTHCHECK --interval=5s --timeout=3s --retries=10 \
+  CMD influx ping

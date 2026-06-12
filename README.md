@@ -87,24 +87,49 @@ Something not working? Ask [Pi](https://pi.dev/) — paste the error or describe
 
 *Ship it — configure real credentials, build the Docker image, and deploy anywhere. No project directory needed in production.*
 
-### 1. Configure
+### 1. Build images
+
+Images are generic — no configuration is baked in. All config lives in `docker-compose.prod.yml` and is injected at runtime. Only mosquitto needs `--build-arg` (it hashes passwords at build time).
+
+**Dashboard (web + server):**
+
+```powershell
+docker buildx build --platform linux/arm64 `
+  -t pi-sense-dashboard:latest `
+  -f Dockerfile.dashboard --load .
+```
+
+**InfluxDB:**
+
+```powershell
+docker buildx build --platform linux/arm64 `
+  -t pi-sense-influxdb:latest `
+  -f Dockerfile.influxdb --load .
+```
+
+**Mosquitto:**
+
+```powershell
+docker buildx build --platform linux/arm64 `
+  -t pi-sense-mosquitto:latest `
+  --build-arg MQTT_USERNAME=<your-mqtt-user> `
+  --build-arg MQTT_PASSWORD=<your-mqtt-pass> `
+  -f Dockerfile.mosquitto --load .
+```
+
+### 2. Configure
 
 Edit `docker-compose.prod.yml` — fill in every line marked with `# ⚠️ set before deploying`.
 
-### 2. Build and run on the same machine
-
-If you're deploying on the same machine where you're building:
+### 3. Run the stack
 
 ```bash
-docker compose -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Same commands for first deploy and updates — only the dashboard container is rebuilt, InfluxDB data is preserved.
+### 4. Cross-platform build — export as tar
 
-### 3. Cross-platform build — export as tar
-
-When the target platform differs from your build machine (e.g. building on x86_64 for a Raspberry Pi 4), use Docker buildx for cross-compilation.
+When the target platform differs from your build machine (e.g. building on x86_64 for a Raspberry Pi 4), export each image as a tar, transfer, and load on the target.
 
 **Create a buildx builder (one-time):**
 
@@ -113,83 +138,57 @@ docker buildx create --name pi-builder --use
 docker buildx inspect --bootstrap
 ```
 
-**Build for a specific platform and save as tar:**
+**Build and export (replace `--load` with `--output`):**
 
-| Target | Command |
-|--------|--------|
-| Raspberry Pi 4 / ARM64 | `docker buildx build --platform linux/arm64 --output type=docker,dest=pi-sense-prod.tar -t pi-sense-prod:latest -f Dockerfile .` |
-| Linux x86_64 | `docker buildx build --platform linux/amd64 --output type=docker,dest=pi-sense-prod.tar -t pi-sense-prod:latest -f Dockerfile .` |
-| Windows (WSL2 + Docker) | `docker buildx build --platform linux/amd64 --output type=docker,dest=pi-sense-prod.tar -t pi-sense-prod:latest -f Dockerfile .` |
+```powershell
+# Dashboard
+docker buildx build --platform linux/arm64 `
+  --output type=docker,dest=pi-sense-dashboard.tar `
+  -t pi-sense-dashboard:latest `
+  -f Dockerfile.dashboard .
 
-**Transfer the image to the target machine:**
+# InfluxDB
+docker buildx build --platform linux/arm64 `
+  --output type=docker,dest=pi-sense-influxdb.tar `
+  -t pi-sense-influxdb:latest `
+  -f Dockerfile.influxdb .
 
-```bash
-scp pi-sense-prod.tar user@<TARGET_IP>:~/
+# Mosquitto
+docker buildx build --platform linux/arm64 `
+  --output type=docker,dest=pi-sense-mosquitto.tar `
+  -t pi-sense-mosquitto:latest `
+  --build-arg MQTT_USERNAME=<your-mqtt-user> `
+  --build-arg MQTT_PASSWORD=<your-mqtt-pass> `
+  -f Dockerfile.mosquitto .
 ```
 
-**On the target machine, load and run:**
+**Transfer and load on the target machine:**
 
 ```bash
-docker load -i pi-sense-prod.tar
-
-docker run -d --name pi-sense \
-  -p 3141:3141 \
-  -e HUE_BRIDGE_IP=<hue-bridge-ip> \
-  -e HUE_API_KEY=<your-api-key> \
-  -e INFLUX_URL=http://influxdb:8086 \
-  -e INFLUX_TOKEN=<your-token> \
-  -e INFLUX_ORG=pi-sense \
-  -e INFLUX_BUCKET=pi-sense \
-  -e MQTT_URL=mqtt://mosquitto:1883 \
-  -e MQTT_USERNAME=<your-mqtt-user> \
-  -e MQTT_PASSWORD=<your-mqtt-pass> \
-  pi-sense-prod:latest
+scp pi-sense-dashboard.tar pi-sense-influxdb.tar pi-sense-mosquitto.tar docker-compose.prod.yml user@<TARGET_IP>:~/
 ```
 
+```bash
+docker load -i pi-sense-dashboard.tar
+docker load -i pi-sense-influxdb.tar
+docker load -i pi-sense-mosquitto.tar
+docker compose -f docker-compose.prod.yml up -d
+```
 
+### 5. Updating production — without losing data
 
-### 4. Updating production — without losing data
-
-The dashboard is **stateless** — all sensor history lives in InfluxDB and Mosquitto volumes, which persist across updates. Only the dashboard container gets swapped; data stays intact.
-
-**With docker compose (full stack on the Pi):**
+The dashboard is **stateless** — all sensor history lives in InfluxDB volumes, which persist across updates.
 
 ```bash
-# 1. Build new image on your dev machine
-docker buildx build --platform linux/arm64 --output type=docker,dest=pi-sense-prod.tar -t pi-sense-prod:latest -f Dockerfile .
+# 1. Rebuild dashboard image
+# 2. Transfer the new tar (+ compose file if config changed)
 
-# 2. Transfer to Pi
-scp pi-sense-prod.tar user@<PI_IP>:~/
+scp pi-sense-dashboard.tar user@<TARGET_IP>:~/
+# scp docker-compose.prod.yml user@<TARGET_IP>:~/  # only if changed
 
-# 3. On the Pi: load the new image and recreate only the dashboard
-docker load -i pi-sense-prod.tar
+# 3. On the Pi: load and recreate only the dashboard
+docker load -i pi-sense-dashboard.tar
 docker compose -f docker-compose.prod.yml up -d dashboard
-```
-
-**With docker run (standalone dashboard only):**
-
-```bash
-# 1. Build new image on your dev machine
-docker buildx build --platform linux/arm64 --output type=docker,dest=pi-sense-prod.tar -t pi-sense-prod:latest -f Dockerfile .
-
-# 2. Transfer to Pi
-scp pi-sense-prod.tar user@<PI_IP>:~/
-
-# 3. On the Pi: swap the old container for the new one
-docker stop pi-sense && docker rm pi-sense
-docker load -i pi-sense-prod.tar
-docker run -d --name pi-sense \
-  -p 3141:3141 \
-  -e HUE_BRIDGE_IP=<hue-bridge-ip> \
-  -e HUE_API_KEY=<your-api-key> \
-  -e INFLUX_URL=http://influxdb:8086 \
-  -e INFLUX_TOKEN=<your-token> \
-  -e INFLUX_ORG=pi-sense \
-  -e INFLUX_BUCKET=pi-sense \
-  -e MQTT_URL=mqtt://mosquitto:1883 \
-  -e MQTT_USERNAME=<your-mqtt-user> \
-  -e MQTT_PASSWORD=<your-mqtt-pass> \
-  pi-sense-prod:latest
 ```
 
 ---

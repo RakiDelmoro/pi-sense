@@ -1,0 +1,25 @@
+# Mosquitto MQTT broker for Pi Sense production
+# Generates hashed credentials at build time, eliminating the need
+# for a runtime entrypoint script. Multi-stage build ensures plaintext
+# passwords don't leak into the final image's ARG metadata.
+
+# ── Stage 1: Generate hashed credentials ──────────────────────
+FROM eclipse-mosquitto:2 AS credgen
+
+ARG MQTT_USERNAME
+ARG MQTT_PASSWORD
+
+RUN mkdir -p /mosquitto/config/auth && \
+    mosquitto_passwd -b -c /mosquitto/config/auth/credentials \
+      "${MQTT_USERNAME}" "${MQTT_PASSWORD}" && \
+    chmod 644 /mosquitto/config/auth/credentials && \
+    chown 188:188 /mosquitto/config/auth/credentials
+
+# ── Stage 2: Final image (no ARGs in metadata) ───────────────
+FROM eclipse-mosquitto:2
+
+COPY --from=credgen /mosquitto/config/auth/credentials /mosquitto/config/auth/credentials
+COPY mosquitto-prod.conf /mosquitto/config/mosquitto.conf
+
+HEALTHCHECK --interval=3s --timeout=3s --retries=10 \
+  CMD nc -z localhost 1883
