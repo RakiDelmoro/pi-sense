@@ -27,6 +27,7 @@ The dev container starts:
 - **App** (`pi-sense-dev-app`) — your workspace with Bun and all dependencies
 - **InfluxDB** (`pi-sense-dev-influxdb`) — time-series database (port 8086)
 - **Mosquitto** (`pi-sense-dev-mosquitto`) — MQTT broker (port 1883)
+- **Automation** (`pi-sense-dev-automation`) — rule engine that reacts to sensor data (Hue, webhooks, etc.)
 
 ### 2. Start the core system (Dashboard, MQTT, InfluxDB)
 
@@ -60,7 +61,24 @@ sensors/<slug>/
 ```
 
 
-### 4. Verify with live data
+### 4. Create automations
+
+Tell Pi what should trigger and what action to take:
+
+```
+You: "When temperature exceeds 30, turn on Hue light 1"
+Pi:  Creates automations/high-temp-alert/{config.ts, rule.ts}
+```
+
+Automation rules are **auto-discovered** — the automation service picks them up on restart. Rules subscribe to MQTT topics and fire outbound actions (Hue lights, webhooks, logs).
+
+```
+automations/<slug>/
+├── config.ts      # metadata: topic, label, enabled
+└── rule.ts        # evaluate() logic + action dispatch
+```
+
+### 5. Verify with live data
 
 **Inside the dev container** (Linux shell):
 
@@ -80,6 +98,16 @@ Open **http://localhost:3141** — you should see the temperature card update wi
 - The dashboard server is running (`bun start`)
 
 Something not working? Ask [Pi](https://pi.dev/) — paste the error or describe what's off and let it debug for you.
+
+### 6. Test an automation
+
+Publish a value that triggers a rule and check the automation service logs:
+
+```bash
+mosquitto_pub -h localhost -p 1883 -t "sensors/temperature" -m '{"value": 35}'
+```
+
+Then check the automation container output to see if the rule fired.
 
 ---
 
@@ -115,6 +143,14 @@ docker buildx build --platform linux/arm64 `
   --build-arg MQTT_USERNAME=<your-mqtt-user> `
   --build-arg MQTT_PASSWORD=<your-mqtt-pass> `
   -f Dockerfile.mosquitto --load .
+```
+
+**Automation:**
+
+```powershell
+docker buildx build --platform linux/arm64 `
+  -t pi-sense-automation:latest `
+  -f Dockerfile.automation --load .
 ```
 
 ### 2. Configure
@@ -160,35 +196,47 @@ docker buildx build --platform linux/arm64 `
   --build-arg MQTT_USERNAME=<your-mqtt-user> `
   --build-arg MQTT_PASSWORD=<your-mqtt-pass> `
   -f Dockerfile.mosquitto .
+
+# Automation
+docker buildx build --platform linux/arm64 `
+  --output type=docker,dest=pi-sense-automation.tar `
+  -t pi-sense-automation:latest `
+  -f Dockerfile.automation .
 ```
 
 **Transfer and load on the target machine:**
 
 ```bash
-scp pi-sense-dashboard.tar pi-sense-influxdb.tar pi-sense-mosquitto.tar docker-compose.prod.yml user@<TARGET_IP>:~/
+scp pi-sense-dashboard.tar pi-sense-influxdb.tar pi-sense-mosquitto.tar pi-sense-automation.tar docker-compose.prod.yml user@<TARGET_IP>:~/
 ```
 
 ```bash
 docker load -i pi-sense-dashboard.tar
 docker load -i pi-sense-influxdb.tar
 docker load -i pi-sense-mosquitto.tar
+docker load -i pi-sense-automation.tar
 docker compose -f docker-compose.prod.yml up -d
 ```
 
 ### 5. Updating production — without losing data
 
-The dashboard is **stateless** — all sensor history lives in InfluxDB volumes, which persist across updates.
+Both the dashboard and automation service are **stateless** — all sensor history lives in InfluxDB volumes, which persist across updates.
 
 ```bash
-# 1. Rebuild dashboard image
-# 2. Transfer the new tar (+ compose file if config changed)
+# 1. Rebuild the image(s) you changed
+# 2. Transfer the new tar(s) (+ compose file if config changed)
 
 scp pi-sense-dashboard.tar user@<TARGET_IP>:~/
+# scp pi-sense-automation.tar user@<TARGET_IP>:~/  # only if automation changed
 # scp docker-compose.prod.yml user@<TARGET_IP>:~/  # only if changed
 
-# 3. On the Pi: load and recreate only the dashboard
+# 3. On the Pi: load and recreate only what changed
 docker load -i pi-sense-dashboard.tar
 docker compose -f docker-compose.prod.yml up -d dashboard
+
+# Or for automation only:
+# docker load -i pi-sense-automation.tar
+# docker compose -f docker-compose.prod.yml up -d automation
 ```
 
 ---
