@@ -3,14 +3,16 @@ import { Header } from './components/header';
 import { Sidebar } from './components/sidebar';
 import { Starfield } from './components/starfield';
 import { LightCard } from './components/light-card';
+import { AutomationsSection } from './components/automation-section';
 import { useHueLights } from './hooks/use-hue';
 
 import sensorRegistry from './sensor-registry';
 import './styles/light-card.css';
 import './styles/scene.css';
+import './styles/automation-section.css';
 
 /** Fixed navigation sections in the sidebar. */
-const SECTIONS = ['sensors', 'lights', 'scenes'] as const;
+const SECTIONS = ['sensors', 'lights', 'scenes', 'automations'] as const;
 
 const sortedRegistry = [...sensorRegistry].sort((a, b) => {
   const weightA = a.config.layoutWeight ?? 999;
@@ -25,11 +27,8 @@ const SCENE_EXCLUDED = new Set([
   'bathroom',
 ]);
 
-const RELAX_BRI = 80;
-const BRIGHT_BRI = 254;
-
 function ScenesSection() {
-  const { lights, setLightState } = useHueLights();
+  const { lights, applyScene } = useHueLights();
   const [busy, setBusy] = useState<string | null>(null);
 
   // Determine active scene from current light states
@@ -37,13 +36,17 @@ function ScenesSection() {
   const avgBri = sceneLights.length > 0
     ? sceneLights.reduce((sum, l) => sum + l.brightness, 0) / sceneLights.length
     : 0;
-  const activeScene = busy ?? (avgBri <= (RELAX_BRI + BRIGHT_BRI) / 2 ? 'relax' : 'bright');
+  const activeScene = busy ?? (avgBri <= (80 + 254) / 2 ? 'relax' : 'bright');
 
-  const applyScene = async (name: string, bri: number) => {
+  const handleScene = async (name: 'bright' | 'relax') => {
     setBusy(name);
-    const targets = lights.filter(l => l.on && l.reachable && !SCENE_EXCLUDED.has(l.name.toLowerCase()));
-    await Promise.all(targets.map(l => setLightState(l.id, { bri })));
-    setBusy(null);
+    try {
+      await applyScene(name);
+    } catch (err) {
+      console.error('Scene failed:', err);
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
@@ -51,7 +54,7 @@ function ScenesSection() {
       <button
         class={`scene-btn scene-btn--relax ${activeScene === 'relax' ? 'scene-btn--active' : ''}`}
         disabled={busy !== null}
-        onClick={() => applyScene('relax', RELAX_BRI)}
+        onClick={() => handleScene('relax')}
       >
         <span class="scene-btn__dot" />
         <div class="scene-btn__icon-wrap">
@@ -66,7 +69,7 @@ function ScenesSection() {
       <button
         class={`scene-btn scene-btn--bright ${activeScene === 'bright' ? 'scene-btn--active' : ''}`}
         disabled={busy !== null}
-        onClick={() => applyScene('bright', BRIGHT_BRI)}
+        onClick={() => handleScene('bright')}
       >
         <span class="scene-btn__dot" />
         <div class="scene-btn__icon-wrap">
@@ -125,6 +128,8 @@ export function App() {
             <LightsSection />
           ) : activeSection === 'scenes' ? (
             <ScenesSection />
+          ) : activeSection === 'automations' ? (
+            <AutomationsSection />
           ) : sensorCards.length > 0 ? (
             <div class="sensor-grid">
               {sensorCards}

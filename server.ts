@@ -19,6 +19,12 @@ import {
   cachedCSS,
 } from './src/server/services/builder';
 import { startMqttBridge } from './src/server/bridge/mqtt';
+import { hueFetch } from './src/server/services/hue';
+import { initSenseCapHandler } from './src/server/sensecap/handler';
+import { getAutomations, setAutomationEnabled } from './src/server/services/automations';
+import { startMqttBridge } from './src/server/bridge/mqtt';
+import { hueFetch } from './src/server/services/hue';
+import { initSenseCapHandler } from './src/server/sensecap/handler';
 
 // Sanitize env vars — Windows CRLF .env files and Docker env_file can inject trailing whitespace
 for (const [k, v] of Object.entries(process.env)) {
@@ -43,33 +49,11 @@ function join(...parts: string[]) {
   return parts.join('/').replace(/\/+/g, '/');
 }
 
-async function hueFetch(path: string, init?: RequestInit): Promise<Response> {
-  const url = `http://${HUE_BRIDGE_IP}/api/${HUE_API_KEY}${path}`;
-  try {
-    const res = await fetch(url, init);
-    const data = await res.json();
-    // Hue returns errors as [{ error: { ... } }]
-    if (Array.isArray(data) && data[0]?.error) {
-      return new Response(JSON.stringify({ error: data[0].error.description }), {
-        status: 502,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-    return new Response(JSON.stringify(data), {
-      headers: { 'Content-Type': 'application/json' },
-    });
-  } catch {
-    return new Response(JSON.stringify({ error: 'Hue bridge unreachable' }), {
-      status: 502,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-}
-
 // Ensure build/pre-build load and starting services
 await loadOrBuildApp();
 startWatching();
 startMqttBridge();
+initSenseCapHandler();
 
 // HTTP + WebSocket interface coordinator
 const server = Bun.serve({
@@ -99,6 +83,63 @@ const server = Bun.serve({
         body,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    // Scenes: apply via server so both Hue and SenseCap state stay in sync
+    const sceneMatch = pathname.match(/^\/api\/scene\/(bright|relax)$/);
+    if (req.method === 'POST' && sceneMatch) {
+      const { applyScene } = await import('./src/server/services/scenes');
+      try {
+        const result = await applyScene(sceneMatch[1] as 'bright' | 'relax');
+        return new Response(JSON.stringify(result), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err?.message ?? 'scene failed' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // Automations: list
+    if (pathname === '/api/automations') {
+      try {
+        const automations = await getAutomations();
+        return new Response(JSON.stringify(automations), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err?.message ?? 'failed to list automations' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // Automations: toggle enabled
+    const automationToggleMatch = pathname.match(/^\/api\/automations\/([^/]+)\/toggle$/);
+    if (req.method === 'POST' && automationToggleMatch) {
+      const slug = automationToggleMatch[1];
+      try {
+        const body = await req.json().catch(() => ({}));
+        const enabled = body?.enabled === true ? true : body?.enabled === false ? false : undefined;
+        if (enabled === undefined) {
+          return new Response(JSON.stringify({ error: 'enabled must be true or false' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        await setAutomationEnabled(slug, enabled);
+        return new Response(JSON.stringify({ slug, enabled }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err?.message ?? 'failed to toggle automation' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // API: latest value for a topic

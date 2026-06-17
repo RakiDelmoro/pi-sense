@@ -48,16 +48,18 @@ WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile --production
 
-# Copy server, static assets, and sensor configs (needed at runtime for MQTT valueKey lookup)
+# Copy server, static assets, sensor configs, and automation configs
 COPY server.ts index.html ./
 COPY src/server/ src/server/
 COPY src/types/ src/types/
 COPY --from=build /app/dist/ /app/dist/
 COPY sensors/ sensors/
+COPY automations/ automations/
 COPY public/ public/
 
 # Run as non-root user for security
 RUN groupadd -r app && useradd -r -g app app
+RUN chown -R app:app /app
 USER app
 
 EXPOSE 3141

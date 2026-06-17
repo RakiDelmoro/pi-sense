@@ -1,5 +1,5 @@
 import { Point } from '@influxdata/influxdb-client';
-import mqtt from 'mqtt';
+import mqtt, { type IClientPublishOptions } from 'mqtt';
 import {
   getWriteApi,
   queryLatest,
@@ -14,34 +14,89 @@ function quoteJsonKeys(raw: string): string {
   return raw.replace(/([,{\s])([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
 }
 
+let mqttClient: mqtt.MqttClient | null = null;
+
+export type SensorValueHandler = (topic: string, value: number, timestamp: Date) => void;
+export type MessageHandler = (topic: string, payload: Buffer) => void;
+export type ConnectHandler = () => void;
+
+const sensorValueHandlers = new Set<SensorValueHandler>();
+const messageHandlers = new Set<MessageHandler>();
+const connectHandlers = new Set<ConnectHandler>();
+
+let sensorTopics: string[] = [];
+
+/** Register a handler called for every parsable sensor value the bridge receives. */
+export function onSensorValue(handler: SensorValueHandler) {
+  sensorValueHandlers.add(handler);
+  return () => sensorValueHandlers.delete(handler);
+}
+
+/** Register a handler called for every raw MQTT message received. */
+export function onMqttMessage(handler: MessageHandler) {
+  messageHandlers.add(handler);
+  return () => messageHandlers.delete(handler);
+}
+
+/** Register a handler called every time the MQTT client connects (or reconnects). */
+export function onMqttConnect(handler: ConnectHandler) {
+  connectHandlers.add(handler);
+  // If connection is already up, run immediately.
+  if (mqttClient?.connected) {
+    handler();
+  }
+  return () => connectHandlers.delete(handler);
+}
+
+/** Publish a message on the shared MQTT connection. */
+export function publish(
+  topic: string,
+  payload: unknown,
+  opts: IClientPublishOptions = { qos: 1, retain: false },
+): void {
+  if (!mqttClient || !mqttClient.connected) {
+    console.warn(`⚠️ MQTT not connected — dropping publish to ${topic}`);
+    return;
+  }
+  const data = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  mqttClient.publish(topic, data, opts);
+  console.log(`📤 MQTT publish → ${topic}: ${data}`);
+}
+
 export function startMqttBridge() {
   const mqttUrl = (process.env.MQTT_URL || 'mqtt://localhost:1883').trim();
   const mqttUsername = process.env.MQTT_USERNAME?.trim() || undefined;
   const mqttPassword = process.env.MQTT_PASSWORD?.trim() || undefined;
   console.log(`🔍 MQTT_URL = ${JSON.stringify(mqttUrl)}`);
-  const mqttClient = mqtt.connect(mqttUrl, {
+  mqttClient = mqtt.connect(mqttUrl, {
     username: mqttUsername,
     password: mqttPassword,
   });
 
   mqttClient.on('connect', () => {
     console.log(`📡 MQTT connected: ${mqttUrl}`);
-    const topics = [...topicValueKeys.keys()].filter(t => !blockedTopics.has(t));
-    if (topics.length === 0) {
+    const client = mqttClient!;
+    connectHandlers.forEach(h => h());
+    sensorTopics = [...topicValueKeys.keys()].filter(t => !blockedTopics.has(t));
+    if (sensorTopics.length === 0) {
       console.log('📡 No sensor topics to subscribe to');
       return;
     }
-    mqttClient.subscribe(topics, (err) => {
+    client.subscribe(sensorTopics, (err) => {
       if (err) {
         console.error('MQTT subscribe error:', err);
       } else {
-        console.log(`📡 Subscribed to: ${topics.join(', ')}`);
+        console.log(`📡 Subscribed to: ${sensorTopics.join(', ')}`);
       }
     });
   });
 
-  mqttClient.on('message', (topic, payload) => {
+    const client = mqttClient!;
+    client.on('message', (topic, payload) => {
+    messageHandlers.forEach(h => h(topic, payload));
+
     if (blockedTopics.has(topic)) return;
+    if (!sensorTopics.includes(topic)) return;
 
     const raw = payload.toString();
     let value: number;
@@ -73,6 +128,9 @@ export function startMqttBridge() {
       timestamp = new Date().toISOString();
     }
 
+    const valueDate = new Date(timestamp);
+    sensorValueHandlers.forEach(h => h(topic, value, valueDate));
+
     console.log(`📨 MQTT → ${topic}: ${value} ${raw}`);
 
     const point = new Point('sensor')
@@ -81,7 +139,7 @@ export function startMqttBridge() {
     if (timeOffsetMs != null) {
       point.intField('time_offset_ms', timeOffsetMs);
     }
-    point.timestamp(new Date(timestamp));
+    point.timestamp(valueDate);
     const writeApi = getWriteApi();
     writeApi.writePoint(point);
 
@@ -95,11 +153,27 @@ export function startMqttBridge() {
     });
   });
 
-  mqttClient.on('error', (err) => {
+  client.on('error', (err) => {
     console.error('MQTT connection error:', err);
   });
 
-  mqttClient.on('close', () => {
+  client.on('close', () => {
     console.log('MQTT connection closed — will auto-reconnect');
+  });
+}
+
+/** Subscribe to an additional MQTT topic on the shared bridge connection. */
+export function subscribeMqtt(topic: string, qos: 0 | 1 | 2 = 1): void {
+  if (!mqttClient || !mqttClient.connected) {
+    console.warn(`⚠️ MQTT not connected — deferring subscription to ${topic}`);
+    mqttClient?.once('connect', () => subscribeMqtt(topic, qos));
+    return;
+  }
+  mqttClient.subscribe(topic, { qos }, (err) => {
+    if (err) {
+      console.error(`MQTT subscribe error for ${topic}:`, err);
+    } else {
+      console.log(`📡 Subscribed to: ${topic}`);
+    }
   });
 }

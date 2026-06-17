@@ -3,6 +3,8 @@ import rawPulses from '../sensors/raw-pulses/sensor';
 import { config as rawPulsesConfig } from '../sensors/raw-pulses/config';
 import waterFlowLpm from '../sensors/water-flow-lpm/sensor';
 import { config as waterFlowLpmConfig } from '../sensors/water-flow-lpm/config';
+import waterLevelRaw from '../sensors/water-level-raw/sensor';
+import { config as waterLevelRawConfig } from '../sensors/water-level-raw/config';
 import waterTank from '../sensors/water-tank/sensor';
 import { config as waterTankConfig } from '../sensors/water-tank/config';
 import waterVolume from '../sensors/water-volume/sensor';
@@ -20,6 +22,7 @@ export interface SensorEntry {
 const sensorRegistry: SensorEntry[] = [
   { slug: 'raw-pulses', Component: rawPulses, config: rawPulsesConfig },
   { slug: 'water-flow-lpm', Component: waterFlowLpm, config: waterFlowLpmConfig },
+  { slug: 'water-level-raw', Component: waterLevelRaw, config: waterLevelRawConfig },
   { slug: 'water-tank', Component: waterTank, config: waterTankConfig },
   { slug: 'water-volume', Component: waterVolume, config: waterVolumeConfig },
 ];

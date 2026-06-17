@@ -45,5 +45,19 @@ services:
       - "1883:1883"
     restart: unless-stopped
 
+  automation:
+    container_name: pi-sense-prod-automation
+    image: pi-sense-automation:latest
+    environment:
+      - MQTT_URL=mqtt://mosquitto:1883
+      - MQTT_USERNAME=        # ⚠️ set before deploying
+      - MQTT_PASSWORD=        # ⚠️ set before deploying
+      - HUE_BRIDGE_IP=        # ⚠️ set before deploying
+      - HUE_API_KEY=          # ⚠️ set before deploying
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   influxdb-data:

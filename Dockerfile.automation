@@ -1,0 +1,33 @@
+# ── Stage 1: Build ──────────────────────────────────────────────
+FROM oven/bun:1.3 AS build
+
+WORKDIR /app
+
+# Install dependencies first (layer cache)
+COPY package.json bun.lock* ./
+RUN bun install --frozen-lockfile
+
+# Copy source and automation definitions
+COPY src/ src/
+COPY automations/ automations/
+COPY automation.ts tsconfig.json ./
+
+# ── Stage 2: Run ───────────────────────────────────────────────
+FROM oven/bun:1.3-slim
+
+WORKDIR /app
+
+# Install only production dependencies
+COPY package.json bun.lock* ./
+RUN bun install --frozen-lockfile --production
+
+# Copy server source, types, and automation rules
+COPY automation.ts ./
+COPY src/automation/ src/automation/
+COPY automations/ automations/
+
+# Run as non-root user for security
+RUN groupadd -r app && useradd -r -g app app
+USER app
+
+CMD ["bun", "automation.ts"]

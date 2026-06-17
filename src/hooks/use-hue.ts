@@ -61,6 +61,20 @@ export function useHueLights() {
     fetchLights();
   }, [fetchLights]);
 
+  const applyScene = useCallback(async (name: 'bright' | 'relax') => {
+    const res = await fetch(`/api/scene/${name}`, {
+      method: 'POST',
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.error ?? `Failed to apply ${name} scene`);
+    }
+
+    // Re-sync with the bridge so brightness values are current
+    await fetchLights();
+  }, [fetchLights]);
+
   const setLightState = useCallback(async (id: string, state: Record<string, any>) => {
     const res = await fetch(`/api/hue/lights/${id}/state`, {
       method: 'PUT',
@@ -85,5 +99,5 @@ export function useHueLights() {
     );
   }, []);
 
-  return { lights, loading, error, refresh: fetchLights, setLightState };
+  return { lights, loading, error, refresh: fetchLights, setLightState, applyScene };
 }

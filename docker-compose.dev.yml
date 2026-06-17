@@ -56,6 +56,23 @@ services:
       - ./mosquitto-dev.conf:/mosquitto/config/mosquitto.conf
     restart: unless-stopped
 
+  automation:
+    container_name: pi-sense-dev-automation
+    build:
+      context: .
+      dockerfile: Dockerfile.automation
+    volumes:
+      - ./automations:/app/automations
+      - ./src/automation:/app/src/automation
+    environment:
+      - MQTT_URL=mqtt://mosquitto:1883
+      - HUE_BRIDGE_IP=
+      - HUE_API_KEY=
+    depends_on:
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   influxdb-data:
 
