@@ -26,6 +26,17 @@ const connectHandlers = new Set<ConnectHandler>();
 
 let sensorTopics: string[] = [];
 
+const AUTOMATION_CONTROL_TOPIC = 'automations/+/enabled';
+const automationEnabled = new Map<string, boolean>();
+
+export function getAutomationEnabled(slug: string): boolean | undefined {
+  return automationEnabled.get(slug);
+}
+
+export function setAutomationEnabled(slug: string, enabled: boolean): void {
+  automationEnabled.set(slug, enabled);
+}
+
 /** Register a handler called for every parsable sensor value the bridge receives. */
 export function onSensorValue(handler: SensorValueHandler) {
   sensorValueHandlers.add(handler);
@@ -73,27 +84,40 @@ export function startMqttBridge() {
     password: mqttPassword,
   });
 
-  mqttClient.on('connect', () => {
+  const client = mqttClient!;
+
+  client.on('connect', () => {
     console.log(`📡 MQTT connected: ${mqttUrl}`);
-    const client = mqttClient!;
     connectHandlers.forEach(h => h());
     sensorTopics = [...topicValueKeys.keys()].filter(t => !blockedTopics.has(t));
     if (sensorTopics.length === 0) {
       console.log('📡 No sensor topics to subscribe to');
-      return;
     }
-    client.subscribe(sensorTopics, (err) => {
+    const topics = sensorTopics.length > 0
+      ? [...sensorTopics, AUTOMATION_CONTROL_TOPIC]
+      : [AUTOMATION_CONTROL_TOPIC];
+    client.subscribe(topics, (err) => {
       if (err) {
         console.error('MQTT subscribe error:', err);
       } else {
-        console.log(`📡 Subscribed to: ${sensorTopics.join(', ')}`);
+        console.log(`📡 Subscribed to: ${topics.join(', ')}`);
       }
     });
   });
 
-    const client = mqttClient!;
-    client.on('message', (topic, payload) => {
+  client.on('message', (topic, payload) => {
     messageHandlers.forEach(h => h(topic, payload));
+
+    const automationMatch = topic.match(/^automations\/([^/]+)\/enabled$/);
+    if (automationMatch) {
+      try {
+        const data = JSON.parse(payload.toString());
+        if (typeof data.enabled === 'boolean') {
+          automationEnabled.set(automationMatch[1], data.enabled);
+        }
+      } catch { /* ignore invalid payload */ }
+      return;
+    }
 
     if (blockedTopics.has(topic)) return;
     if (!sensorTopics.includes(topic)) return;

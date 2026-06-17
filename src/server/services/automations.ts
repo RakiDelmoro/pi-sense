@@ -35,12 +35,15 @@ async function parseConfig(slug: string): Promise<AutomationMeta | null> {
   const description = extractField(text, 'description');
   const enabled = extractBoolField(text, 'enabled');
 
+  const { getAutomationEnabled: getRuntimeEnabled } = await import('../bridge/mqtt');
+  const runtimeEnabled = getRuntimeEnabled(slug);
+
   return {
     slug,
     label,
     topic,
     valueKey,
-    enabled: enabled ?? true,
+    enabled: runtimeEnabled ?? enabled ?? true,
     description,
   };
 }
@@ -68,5 +71,9 @@ export async function setAutomationEnabled(slug: string, enabled: boolean): Prom
   publish(controlTopic(slug), JSON.stringify({ enabled }), {
     qos: 1,
     retain: true,
+  });
+  // Optimistically update local state so the dashboard UI reflects immediately.
+  import('../bridge/mqtt').then(({ setAutomationEnabled: setLocal }) => {
+    setLocal(slug, enabled);
   });
 }
