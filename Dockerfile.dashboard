@@ -59,7 +59,6 @@ COPY public/ public/
 
 # Run as non-root user for security
 RUN groupadd -r app && useradd -r -g app app
-RUN chown -R app:app /app
 USER app
 
 EXPOSE 3141

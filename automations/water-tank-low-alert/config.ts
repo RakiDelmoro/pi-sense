@@ -5,6 +5,6 @@ export const config: AutomationConfig = {
   label: 'Water Tank Low Alert',
   topic: 'esp/water-level',
   valueKey: 'water_level',
-  enabled: false,
+  enabled: true,
   description: 'Turns the Front Door Hue light red when water level drops to 15% or below.',
 };

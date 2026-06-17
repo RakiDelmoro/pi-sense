@@ -28,27 +28,11 @@ export function getAutomations() {
   }));
 }
 
-function configPath(slug: string): string {
-  return `${import.meta.dir}/../../automations/${slug}/config.ts`;
-}
-
-async function writeEnabledToConfig(slug: string, enabled: boolean): Promise<void> {
-  const path = configPath(slug);
-  const file = Bun.file(path);
-  const text = await file.text();
-  const updated = text.replace(
-    /enabled:\s*(true|false)/,
-    `enabled: ${enabled}`,
-  );
-  await Bun.write(path, updated);
-}
-
 export async function setAutomationEnabled(slug: string, enabled: boolean): Promise<void> {
   if (!loadedRules.some(r => r.slug === slug)) {
     throw new Error(`Automation "${slug}" not found`);
   }
   enabledRules.set(slug, enabled);
-  await writeEnabledToConfig(slug, enabled);
 }
 
 export async function startAutomationRunner() {

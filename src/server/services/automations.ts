@@ -1,8 +1,6 @@
 import type { AutomationConfig } from '../../automation/types';
 import { publish } from '../bridge/mqtt';
 
-const CONTROL_TOPIC_PREFIX = 'automations';
-
 interface AutomationMeta extends AutomationConfig {
   // always present normalized type
 }
@@ -63,24 +61,12 @@ export async function getAutomations(): Promise<AutomationMeta[]> {
   return results;
 }
 
-/** Toggle an automation's enabled state and notify the automation service. */
+const controlTopic = (slug: string): string => `automations/${slug}/enabled`;
+
+/** Toggle an automation's enabled state via a retained MQTT control message. */
 export async function setAutomationEnabled(slug: string, enabled: boolean): Promise<void> {
-  const path = configPath(slug);
-  const file = Bun.file(path);
-  if (!(await file.exists())) {
-    throw new Error(`Automation "${slug}" not found`);
-  }
-
-  const text = await file.text();
-  if (!/enabled:\s*(true|false)/m.test(text)) {
-    throw new Error(`Automation config for "${slug}" is missing an enabled field`);
-  }
-
-  const updated = text.replace(/enabled:\s*(true|false)/m, `enabled: ${enabled}`);
-  await Bun.write(path, updated);
-
-  publish(`${CONTROL_TOPIC_PREFIX}/${slug}/enabled`, JSON.stringify({ enabled }), {
+  publish(controlTopic(slug), JSON.stringify({ enabled }), {
     qos: 1,
-    retain: false,
+    retain: true,
   });
 }
