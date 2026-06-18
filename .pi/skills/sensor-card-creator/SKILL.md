@@ -43,13 +43,11 @@ The user can describe any visual. You build it with Preact, SVG, CSS, and Chart.
 
 ## MQTT topic convention
 
-All sensor topics **must start with `sensors/`** — the server subscribes to `sensors/#` on the MQTT broker. Examples:
+The adapter subscribes to exactly the topics declared in `sensors/*/config.ts` — there is no enforced prefix. A sensor's `topic` is what the adapter listens to and what the dashboard/automation react to via `pi-sense/updates/<topic>`.
 
-- ✅ `sensors/temperature`
-- ✅ `sensors/water-tank`
-- ✅ `sensors/wind/dir`
-- ❌ `temperature` (won't be received)
-- ❌ `test/sensor` (won't be received)
+Existing sensors use the `esp/` prefix (e.g. `esp/water-level`, `esp/water-flow`). When creating a new sensor, match the topic your device actually publishes to.
+
+> **Note:** An earlier version of this doc prescribed a `sensors/` prefix. That is not enforced by the code. If you want to standardize on a prefix, decide and migrate existing configs — for now, use whatever topic the device publishes.
 
 ## Modes
 
@@ -98,7 +96,7 @@ Remove a sensor completely — code and database data. **Always ask for confirma
      STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "http://localhost:3141/api/sensor-data?topic=<topic>")
      if [ "$STATUS" != "204" ]; then echo "FAIL: InfluxDB data not deleted (HTTP $STATUS)"; fi
      ```
-     This also blocks the topic so the MQTT bridge stops writing new data for it.
+     This also blocks the topic so the adapter stops ingesting new data for it.
 4. Verify — no other files need to be touched (auto-discovery will stop including the deleted sensor)
 
 ## Data flow
@@ -106,18 +104,19 @@ Remove a sensor completely — code and database data. **Always ask for confirma
 The dashboard never touches MQTT directly. All data comes from InfluxDB via `server.ts`.
 
 ```
-Sensor → MQTT Broker → server.ts (MQTT bridge) → InfluxDB (write + flush)
-                                                       │                │
-                                                       │   server.ts detects topic updated
-                                                       │                │
-                                                       │           server.ts
-                                                       │                │
-                                                       └──> query latest ┘
-                                                              │
-                                                     WebSocket push to browser
+Sensor → MQTT Broker → Adapter (parses, writes InfluxDB, flushes)
+                                       │
+                                       └── publishes pi-sense/updates/<topic> (bare notification)
+                                                  │
+                                       Dashboard (server.ts) receives notification
+                                                  │
+                                       server.ts queries InfluxDB for latest value
+                                                  │
+                                       WebSocket push to browser
 ```
 
-- `server.ts` subscribes to MQTT, writes data to InfluxDB, flushes, then queries InfluxDB for the confirmed value and pushes it to browsers via WebSocket
+- The **adapter** subscribes to MQTT, parses payloads, writes data to InfluxDB, flushes, then publishes a bare `pi-sense/updates/<topic>` notification (no value — the DB is the only source of truth)
+- `server.ts` (the dashboard) subscribes to `pi-sense/updates/#`. On each notification it queries InfluxDB for the confirmed value and pushes it to browsers via WebSocket
 - Browser connects to `server.ts` WebSocket, receives `{ topic, value, timestamp }` messages — all values come from InfluxDB queries
 - Browser queries `GET /api/history?topic=...&limit=...&range=...` for data within a time range (charts) — also from InfluxDB; auto-downsamples only when raw count exceeds threshold
 - **InfluxDB is the only source of truth.** The browser never sees data that InfluxDB hasn't confirmed.
@@ -137,12 +136,12 @@ sensors/<slug>/
 
 **Only create/modify/delete files within `sensors/<slug>/`.** Never edit `src/app.tsx` or any other file outside the sensor folder — auto-discovery handles everything.
 
-**Exception:** When a new per-sensor config field (e.g. `valueKey`) requires server-side support, `server.ts` may be edited. This should be rare — only when the MQTT bridge needs to know how to extract values from payloads differently per sensor. Frontend-only config fields (thresholds, colors, etc.) never require server edits.
+Per-sensor ingest metadata (`valueKey`, `timeOffsetKey`) is read by scanning `sensors/*/config.ts` at startup (in `src/mqtt/sensor-topics.ts`, used by the adapter). Adding a new config field that the adapter should honor requires no server-side code edit — just add the field to the config and update `sensor-topics.ts` if a new kind of metadata is introduced. Frontend-only config fields (thresholds, colors, etc.) never require any server edits.
 
 ### config.ts — always this shape
 
 ```ts
-import type { SensorConfig } from '../../src/types/sensor';
+import type { SensorConfig } from '../../src/dashboard/types/sensor';
 
 export const config: SensorConfig = {
   slug: '<slug>',
@@ -163,8 +162,8 @@ Only keys with a registered sensor card are extracted and stored. Any other keys
 
 ### sensor.tsx — component rules
 
-- Import and use `useSensorValue` from `src/hooks/use-sensor-data` for real-time numeric values
-- Import and use `useSensorHistory` from `src/hooks/use-sensor-data` for time-series arrays (charts)
+- Import and use `useSensorValue` from `src/dashboard/hooks/use-sensor-data` for real-time numeric values
+- Import and use `useSensorHistory` from `src/dashboard/hooks/use-sensor-data` for time-series arrays (charts)
 - Import `config` from `./config`
 - Import CSS from `./sensor.css`
 - Accept **no props** — all config comes from `./config`
@@ -230,9 +229,9 @@ ls sensors/<slug>/ 2>/dev/null && echo "FAIL: folder still exists" || echo "OK: 
 
 These files already exist — **do not recreate them**. Reference them by import path.
 
-### `src/types/sensor.ts` — SensorConfig type
+### `src/dashboard/types/sensor.ts` — SensorConfig type
 
-Import: `import type { SensorConfig } from '../../src/types/sensor';`
+Import: `import type { SensorConfig } from '../../src/dashboard/types/sensor';`
 
 ```ts
 interface SensorConfig {
@@ -249,7 +248,7 @@ interface SensorConfig {
 }
 ```
 
-### `src/hooks/use-sensor-data.ts` — Data hooks
+### `src/dashboard/hooks/use-sensor-data.ts` — Data hooks
 
 Two hooks for getting sensor data into cards. **Never call InfluxDB or MQTT from a card — always use these hooks.**
 
@@ -260,8 +259,8 @@ Two hooks for getting sensor data into cards. **Never call InfluxDB or MQTT from
 
 Import:
 ```ts
-import { useSensorValue, useSensorHistory } from '../../src/hooks/use-sensor-data';
-import type { HistoryPoint } from '../../src/hooks/use-sensor-data';
+import { useSensorValue, useSensorHistory } from '../../src/dashboard/hooks/use-sensor-data';
+import type { HistoryPoint } from '../../src/dashboard/hooks/use-sensor-data';
 ```
 
 - `useSensorValue` returns `null` until the first WebSocket update arrives
@@ -269,9 +268,9 @@ import type { HistoryPoint } from '../../src/hooks/use-sensor-data';
   - `maxPoints` — max data points to keep (default 8640). Set based on how many points the chart should show
   - `range` — InfluxDB time range filter (default `'24h'`). Controls how far back to query. Common values: `'1h'`, `'24h'`, `'7d'`, `'30d'`, `'3Mo'`, `'6Mo'`, `'1y'`
 
-### `src/styles/sensor-card.css` — Base card styles
+### `src/dashboard/styles/sensor-card.css` — Base card styles
 
-Already imported in `src/styles.css`. Available CSS classes:
+Already imported in `src/dashboard/styles/main.css`. Available CSS classes:
 
 | Class | Purpose |
 |---|---|
@@ -284,7 +283,7 @@ Already imported in `src/styles.css`. Available CSS classes:
 
 ### Sensor grid
 
-Already in `src/styles.css` — `.sensor-grid` with `auto-fill, minmax(280px, 1fr)` columns. Cards auto-size to their content height (no stretching).
+Already in `src/dashboard/styles/main.css` — `.sensor-grid` with `auto-fill, minmax(280px, 1fr)` columns. Cards auto-size to their content height (no stretching).
 
 ### Card width modifiers
 

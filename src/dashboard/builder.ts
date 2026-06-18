@@ -1,6 +1,4 @@
-import { topicValueKeys, topicTimeOffsetKeys, blockedTopics } from './influx';
-
-const ROOT = import.meta.dir + '/../../..';
+const ROOT = import.meta.dir + '/../..';
 
 function join(...parts: string[]) {
   return parts.join('/').replace(/\/+/g, '/');
@@ -15,7 +13,6 @@ export async function generateSensorRegistry() {
 
   const imports: string[] = [];
   const items: string[] = [];
-  const activeTopics = new Set<string>();
 
   for (const entry of entries) {
     const slug = entry.match(/sensors\/([^/]+)\/sensor\.tsx/)?.[1];
@@ -24,24 +21,9 @@ export async function generateSensorRegistry() {
       console.error(`Invalid sensor slug skipped: ${slug} (must be lowercase alphanumeric + hyphens)`);
       continue;
     }
-    try {
-      const configContent = await Bun.file(join(ROOT, 'sensors', slug, 'config.ts')).text();
-      const topicMatch = configContent.match(/topic:\s*['"]([^'"]+)['"]/);
-      if (topicMatch) {
-        activeTopics.add(topicMatch[1]);
-        const valueKeyMatch = configContent.match(/valueKey:\s*['"]([^'"]+)['"]/);
-        if (valueKeyMatch) {
-          topicValueKeys.set(topicMatch[1], valueKeyMatch[1]);
-        }
-        const timeOffsetKeyMatch = configContent.match(/timeOffsetKey:\s*['"]([^'"]+)['"]/);
-        if (timeOffsetKeyMatch) {
-          topicTimeOffsetKeys.set(topicMatch[1], timeOffsetKeyMatch[1]);
-        }
-      }
-    } catch { /* ignore invalid config */ }
     const varName = slug.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
-    imports.push(`import ${varName} from '../${entry.replace(/\.tsx$/, '')}';`);
-    imports.push(`import { config as ${varName}Config } from '../sensors/${slug}/config';`);
+    imports.push(`import ${varName} from '../../../${entry.replace(/\.tsx$/, '')}';`);
+    imports.push(`import { config as ${varName}Config } from '../../../sensors/${slug}/config';`);
     items.push(`  { slug: '${slug}', Component: ${varName}, config: ${varName}Config },`);
   }
 
@@ -49,7 +31,7 @@ export async function generateSensorRegistry() {
 ${imports.join('\n')}
 
 import type { FunctionalComponent } from 'preact';
-import type { SensorConfig } from './types/sensor';
+import type { SensorConfig } from '../types/sensor';
 
 export interface SensorEntry {
   slug: string;
@@ -64,14 +46,10 @@ ${items.join('\n')}
 export default sensorRegistry;
 `;
 
-  for (const topic of activeTopics) {
-    blockedTopics.delete(topic);
-  }
-
   const srcDir = join(ROOT, 'src');
   try {
     if (await Bun.file(srcDir).stat().then(s => s.isDirectory()).catch(() => false)) {
-      await Bun.write(join(ROOT, 'src/sensor-registry.ts'), content);
+      await Bun.write(join(ROOT, 'src/dashboard/generated/sensor-registry.ts'), content);
     }
   } catch {
     // Permission denied in production — file is only needed for dev rebuilds
@@ -83,7 +61,7 @@ export async function buildApp() {
   await generateSensorRegistry();
 
   const result = await Bun.build({
-    entrypoints: [join(ROOT, 'src/index.tsx')],
+    entrypoints: [join(ROOT, 'src/dashboard/index.tsx')],
     outdir: '/tmp/pi-sense-build',
     sourcemap: 'inline',
     target: 'browser',

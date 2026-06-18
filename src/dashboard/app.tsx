@@ -6,7 +6,7 @@ import { LightCard } from './components/light-card';
 import { AutomationsSection } from './components/automation-section';
 import { useHueLights } from './hooks/use-hue';
 
-import sensorRegistry from './sensor-registry';
+import sensorRegistry from './generated/sensor-registry';
 import './styles/light-card.css';
 import './styles/scene.css';
 import './styles/automation-section.css';
@@ -28,15 +28,17 @@ const SCENE_EXCLUDED = new Set([
 ]);
 
 function ScenesSection() {
-  const { lights, applyScene } = useHueLights();
+  const { lights, loading, applyScene } = useHueLights();
   const [busy, setBusy] = useState<string | null>(null);
 
-  // Determine active scene from current light states
+  // Determine active scene from current light states. While lights are still
+  // loading, don't guess — no button is highlighted, which avoids a brief
+  // relax→bright flash before the Hue bridge responds.
   const sceneLights = lights.filter(l => l.on && l.reachable && !SCENE_EXCLUDED.has(l.name.toLowerCase()));
   const avgBri = sceneLights.length > 0
     ? sceneLights.reduce((sum, l) => sum + l.brightness, 0) / sceneLights.length
     : 0;
-  const activeScene = busy ?? (avgBri <= (80 + 254) / 2 ? 'relax' : 'bright');
+  const activeScene = busy ?? (loading ? null : (avgBri <= (80 + 254) / 2 ? 'relax' : 'bright'));
 
   const handleScene = async (name: 'bright' | 'relax') => {
     setBusy(name);

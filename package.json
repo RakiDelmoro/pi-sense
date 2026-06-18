@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "start": "bun server.ts",
-    "dev": "bun server.ts"
+    "start": "bun src/dashboard/server.ts",
+    "dev": "bun src/dashboard/server.ts"
   },
   "dependencies": {
     "@influxdata/influxdb-client": "^1.35.0",

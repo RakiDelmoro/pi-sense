@@ -1,11 +1,7 @@
 import mqtt from 'mqtt';
 import type { AutomationRule, AutomationContext } from './types';
 import { dispatchActions } from './actions';
-
-/** Quote unquoted JSON keys so `{water_level: 42}` → `{"water_level": 42}` */
-function quoteJsonKeys(raw: string): string {
-  return raw.replace(/([,{\s])([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
-}
+import { queryLatest } from '../influx/influx';
 
 interface LoadedRule {
   module: AutomationRule;
@@ -68,13 +64,8 @@ export async function startAutomationRunner() {
     return;
   }
 
-  const activeRules = loadedRules.filter(r => enabledRules.get(r.slug) !== false);
-
-  if (activeRules.length === 0) {
-    console.log('📡 No active automation rules');
-  }
-
-  // Build topic → rules index (include all topics so enabling at runtime works)
+  // Build topic → rules index. Rules react to DB-update notifications for
+  // their topic, not to raw MQTT payloads — the DB is the only source of truth.
   const topicRules = new Map<string, LoadedRule[]>();
   for (const rule of loadedRules) {
     const existing = topicRules.get(rule.topic) ?? [];
@@ -83,6 +74,7 @@ export async function startAutomationRunner() {
   }
 
   const controlTopic = 'automations/+/enabled';
+  const updatePrefix = 'pi-sense/updates/';
 
   // Connect to MQTT
   const mqttUrl = (process.env.MQTT_URL || 'mqtt://localhost:1883').trim();
@@ -96,7 +88,7 @@ export async function startAutomationRunner() {
 
   mqttClient.on('connect', () => {
     console.log(`📡 Automation MQTT connected: ${mqttUrl}`);
-    const topics = [...topicRules.keys(), controlTopic];
+    const topics = ['pi-sense/updates/#', controlTopic];
     mqttClient.subscribe(topics, (err) => {
       if (err) {
         console.error('MQTT subscribe error:', err);
@@ -106,15 +98,13 @@ export async function startAutomationRunner() {
     });
   });
 
-  mqttClient.on('message', (topic, payload) => {
-    const raw = payload.toString();
-
+  mqttClient.on('message', async (topic, payload) => {
     // Control messages from the dashboard toggling enable/disable
     const controlMatch = topic.match(/^automations\/([^/]+)\/enabled$/);
     if (controlMatch) {
       const slug = controlMatch[1];
       try {
-        const data = JSON.parse(raw);
+        const data = JSON.parse(payload.toString());
         if (typeof data.enabled === 'boolean') {
           enabledRules.set(slug, data.enabled);
           console.log(`🔧 Automation "${slug}" ${data.enabled ? 'enabled' : 'disabled'}`);
@@ -123,31 +113,24 @@ export async function startAutomationRunner() {
       return;
     }
 
-    const matchingRules = topicRules.get(topic);
+    // DB-update notification: requery InfluxDB for the authoritative value.
+    if (!topic.startsWith(updatePrefix)) return;
+    const sensorTopic = topic.slice(updatePrefix.length);
+    const matchingRules = topicRules.get(sensorTopic);
     if (!matchingRules) return;
+
+    const latest = await queryLatest(sensorTopic);
+    if (!latest) return;
+
+    const ctx: AutomationContext = {
+      value: latest.value,
+      topic: sensorTopic,
+      raw: String(latest.value),
+      timestamp: latest.timestamp,
+    };
 
     for (const rule of matchingRules) {
       if (enabledRules.get(rule.slug) === false) continue;
-
-      let value: number;
-      let timestamp: string;
-
-      try {
-        const data = JSON.parse(raw) || JSON.parse(quoteJsonKeys(raw));
-        const key = rule.module.valueKey ?? 'value';
-        value = Number(data[key] ?? data.value ?? data);
-        if (isNaN(value)) continue;
-        timestamp = (data.timestamp && !isNaN(Date.parse(data.timestamp)))
-          ? data.timestamp
-          : new Date().toISOString();
-      } catch {
-        value = Number(raw);
-        if (isNaN(value)) continue;
-        timestamp = new Date().toISOString();
-      }
-
-      const ctx: AutomationContext = { value, topic, raw, timestamp };
-
       try {
         const results = rule.module.evaluate(ctx);
         dispatchActions(results);

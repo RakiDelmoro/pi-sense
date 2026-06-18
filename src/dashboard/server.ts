@@ -2,29 +2,27 @@ import {
   queryLatest,
   queryHistory,
   deleteInfluxData,
-  blockedTopics,
   isValidTopic,
   getInfluxBucket,
-} from './src/server/services/influx';
+} from '../influx/influx';
 import {
   wsClients,
   subscribeWs,
   unsubscribeWs,
   removeWs,
-} from './src/server/services/websocket';
+} from './websocket';
 import {
   loadOrBuildApp,
   startWatching,
   cachedJS,
   cachedCSS,
-} from './src/server/services/builder';
-import { startMqttBridge } from './src/server/bridge/mqtt';
-import { hueFetch } from './src/server/services/hue';
-import { initSenseCapHandler } from './src/server/sensecap/handler';
-import { getAutomations, setAutomationEnabled } from './src/server/services/automations';
-import { startMqttBridge } from './src/server/bridge/mqtt';
-import { hueFetch } from './src/server/services/hue';
-import { initSenseCapHandler } from './src/server/sensecap/handler';
+} from './builder';
+import { startMqttClient, publish } from '../mqtt/mqtt';
+import { loadSensorTopics } from '../mqtt/sensor-topics';
+import { startRealtimeListener } from './realtime';
+import { hueFetch } from './hue';
+import { initSenseCapHandler } from './sensecap';
+import { getAutomations, setAutomationEnabled } from './automations';
 
 // Sanitize env vars — Windows CRLF .env files and Docker env_file can inject trailing whitespace
 for (const [k, v] of Object.entries(process.env)) {
@@ -43,7 +41,8 @@ if (!HUE_BRIDGE_IP || !HUE_API_KEY) {
 }
 
 const PORT = parseInt(process.env.PORT || '3141');
-const ROOT = import.meta.dir;
+// Entry lives in src/dashboard/ — go up two levels to reach repo root (index.html, public/, dist/).
+const ROOT = import.meta.dir + '/../..';
 
 function join(...parts: string[]) {
   return parts.join('/').replace(/\/+/g, '/');
@@ -51,8 +50,10 @@ function join(...parts: string[]) {
 
 // Ensure build/pre-build load and starting services
 await loadOrBuildApp();
+await loadSensorTopics();
 startWatching();
-startMqttBridge();
+startMqttClient();
+startRealtimeListener();
 initSenseCapHandler();
 
 // HTTP + WebSocket interface coordinator
@@ -88,7 +89,7 @@ const server = Bun.serve({
     // Scenes: apply via server so both Hue and SenseCap state stay in sync
     const sceneMatch = pathname.match(/^\/api\/scene\/(bright|relax)$/);
     if (req.method === 'POST' && sceneMatch) {
-      const { applyScene } = await import('./src/server/services/scenes');
+      const { applyScene } = await import('./scenes');
       try {
         const result = await applyScene(sceneMatch[1] as 'bright' | 'relax');
         return new Response(JSON.stringify(result), {
@@ -226,10 +227,11 @@ const server = Bun.serve({
           });
         }
 
-        blockedTopics.add(topic);
+        // Notify the adapter to stop ingesting this topic (retained so it
+        // survives adapter restarts) and tell browsers to drop it.
+        publish('pi-sense/blocked/' + topic, '1', { qos: 1, retain: true });
 
-        const subs = wsClients; // Send to active clients that need cleanup
-        for (const ws of subs) {
+        for (const ws of wsClients) {
           ws.send(JSON.stringify({ topic, deleted: true }));
         }
 

@@ -66,11 +66,40 @@ services:
       - ./src/automation:/app/src/automation
     environment:
       - MQTT_URL=mqtt://mosquitto:1883
+      - INFLUX_URL=http://influxdb:8086
+      - INFLUX_TOKEN=pi-sense-dev-token
+      - INFLUX_ORG=pi-sense
+      - INFLUX_BUCKET=pi-sense
       - HUE_BRIDGE_IP=
       - HUE_API_KEY=
     depends_on:
       mosquitto:
         condition: service_started
+      influxdb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  adapter:
+    container_name: pi-sense-dev-adapter
+    build:
+      context: .
+      dockerfile: Dockerfile.adapter
+    volumes:
+      # Hot-reload sensor configs and adapter source in dev
+      - ./sensors:/app/sensors
+      - ./src/server/bridge:/app/src/server/bridge
+      - ./src/adapter.ts:/app/src/adapter.ts
+    environment:
+      - MQTT_URL=mqtt://mosquitto:1883
+      - INFLUX_URL=http://influxdb:8086
+      - INFLUX_TOKEN=pi-sense-dev-token
+      - INFLUX_ORG=pi-sense
+      - INFLUX_BUCKET=pi-sense
+    depends_on:
+      mosquitto:
+        condition: service_started
+      influxdb:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

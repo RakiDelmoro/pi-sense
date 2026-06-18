@@ -24,12 +24,15 @@ cd pi-sense
 Open the project in VS Code — it will prompt to **Reopen in Container**. Accept it.
 
 The dev container starts:
-- **App** (`pi-sense-dev-app`) — your workspace with Bun and all dependencies
+- **App** (`pi-sense-dev-app`) — your workspace with Bun and all dependencies; runs the dashboard via `bun start`
+- **Adapter** (`pi-sense-dev-adapter`) — ingests MQTT sensor data and writes it to InfluxDB
 - **InfluxDB** (`pi-sense-dev-influxdb`) — time-series database (port 8086)
 - **Mosquitto** (`pi-sense-dev-mosquitto`) — MQTT broker (port 1883)
 - **Automation** (`pi-sense-dev-automation`) — rule engine that reacts to sensor data (Hue, webhooks, etc.)
 
-### 2. Start the core system (Dashboard, MQTT, InfluxDB)
+### 2. Start the dashboard
+
+The adapter, InfluxDB, Mosquitto, and automation services run as containers. Start the dashboard itself from the workspace:
 
 ```bash
 bun start
@@ -145,6 +148,14 @@ docker buildx build --platform linux/arm64 `
   -f Dockerfile.mosquitto --load .
 ```
 
+**Adapter (MQTT → InfluxDB ingest):**
+
+```powershell
+docker buildx build --platform linux/arm64 `
+  -t pi-sense-adapter:latest `
+  -f Dockerfile.adapter --load .
+```
+
 **Automation:**
 
 ```powershell
@@ -197,6 +208,12 @@ docker buildx build --platform linux/arm64 `
   --build-arg MQTT_PASSWORD=<your-mqtt-pass> `
   -f Dockerfile.mosquitto .
 
+# Adapter
+docker buildx build --platform linux/arm64 `
+  --output type=docker,dest=pi-sense-adapter.tar `
+  -t pi-sense-adapter:latest `
+  -f Dockerfile.adapter .
+
 # Automation
 docker buildx build --platform linux/arm64 `
   --output type=docker,dest=pi-sense-automation.tar `
@@ -207,11 +224,12 @@ docker buildx build --platform linux/arm64 `
 **Transfer and load on the target machine:**
 
 ```bash
-scp pi-sense-dashboard.tar pi-sense-influxdb.tar pi-sense-mosquitto.tar pi-sense-automation.tar docker-compose.prod.yml user@<TARGET_IP>:~/
+scp pi-sense-dashboard.tar pi-sense-adapter.tar pi-sense-influxdb.tar pi-sense-mosquitto.tar pi-sense-automation.tar docker-compose.prod.yml user@<TARGET_IP>:~/
 ```
 
 ```bash
 docker load -i pi-sense-dashboard.tar
+docker load -i pi-sense-adapter.tar
 docker load -i pi-sense-influxdb.tar
 docker load -i pi-sense-mosquitto.tar
 docker load -i pi-sense-automation.tar
@@ -220,24 +238,89 @@ docker compose -f docker-compose.prod.yml up -d
 
 ### 5. Updating production — without losing data
 
-Both the dashboard and automation service are **stateless** — all sensor history lives in InfluxDB volumes, which persist across updates.
+All sensor history lives in the InfluxDB volume (`influxdb-data`), which persists across container updates as long as you don't pass `-v` to `down`. The dashboard, adapter, and automation containers are stateless: recreating them never touches InfluxDB. The adapter's blocked-topic set and the automation enabled-state are rehydrated from retained MQTT messages on restart, so they survive container updates too (as long as the mosquitto container keeps its retained state).
+
+#### What to rebuild for each kind of change
+
+`config` directories (`sensors/`, `automations/`) are **baked into images at build time** — they're not bind-mounted in production. Because two subsystems read each config dir, most config changes require rebuilding **two** images:
+
+| Change | Rebuild these images | Why |
+|---|---|---|
+| Add / modify a **sensor card** | `dashboard` + `adapter` | Dashboard renders the card (frontend registry); adapter needs the new `topic`/`valueKey` to ingest it |
+| Add / modify an **automation rule** | `automation` + `dashboard` | Automation runs the rule; dashboard lists it in the Automations tab |
+| Dashboard-only code (UI, styles, hooks) | `dashboard` only | No config/ingest change |
+| Adapter-only code (ingest logic) | `adapter` only | No config change |
+| Automation-only code (runner/actions) | `automation` only | No config change |
+| InfluxDB / Mosquitto config | `influxdb` / `mosquitto` only | Independent |
+| `docker-compose.prod.yml` (env, ports) | none — just redeploy the compose file | Config injected at runtime, not baked |
+
+#### Example: add a new sensor card
+
+The sensor now exists in `sensors/<slug>/`. Rebuild the two images that bake `sensors/` in:
+
+```powershell
+# On your build machine
+# Dashboard (renders the card)
+docker buildx build --platform linux/arm64 -t pi-sense-dashboard:latest -f Dockerfile.dashboard --load .
+# Adapter (ingests the new topic)
+docker buildx build --platform linux/arm64 -t pi-sense-adapter:latest -f Dockerfile.adapter --load .
+```
 
 ```bash
-# 1. Rebuild the image(s) you changed
-# 2. Transfer the new tar(s) (+ compose file if config changed)
-
-scp pi-sense-dashboard.tar user@<TARGET_IP>:~/
-# scp pi-sense-automation.tar user@<TARGET_IP>:~/  # only if automation changed
-# scp docker-compose.prod.yml user@<TARGET_IP>:~/  # only if changed
-
-# 3. On the Pi: load and recreate only what changed
-docker load -i pi-sense-dashboard.tar
-docker compose -f docker-compose.prod.yml up -d dashboard
-
-# Or for automation only:
-# docker load -i pi-sense-automation.tar
-# docker compose -f docker-compose.prod.yml up -d automation
+# Transfer + load on the Pi
+scp pi-sense-dashboard.tar pi-sense-adapter.tar user@<TARGET_IP>:~/
+ssh user@<TARGET_IP> '
+  docker load -i pi-sense-dashboard.tar
+  docker load -i pi-sense-adapter.tar
+  docker compose -f docker-compose.prod.yml up -d dashboard adapter
+'
 ```
+
+InfluxDB is untouched → **all existing sensor history is preserved**. The new sensor's card appears and its topic starts being ingested from the moment the adapter restarts.
+
+#### Example: add a new automation rule
+
+```powershell
+# Automation (runs the rule) + Dashboard (lists it in the UI)
+docker buildx build --platform linux/arm64 -t pi-sense-automation:latest -f Dockerfile.automation --load .
+docker buildx build --platform linux/arm64 -t pi-sense-dashboard:latest -f Dockerfile.dashboard --load .
+```
+
+```bash
+scp pi-sense-automation.tar pi-sense-dashboard.tar user@<TARGET_IP>:~/
+ssh user@<TARGET_IP> '
+  docker load -i pi-sense-automation.tar
+  docker load -i pi-sense-dashboard.tar
+  docker compose -f docker-compose.prod.yml up -d automation dashboard
+'
+```
+
+#### Example: update dashboard code only (no config change)
+
+```bash
+scp pi-sense-dashboard.tar user@<TARGET_IP>:~/
+ssh user@<TARGET_IP> 'docker load -i pi-sense-dashboard.tar && docker compose -f docker-compose.prod.yml up -d dashboard'
+```
+
+#### Reset to a fresh state (erases all data)
+
+This wipes InfluxDB history, retained MQTT state, and recreates every container from scratch. Use only when you want a clean slate.
+
+```bash
+# Stop everything and DELETE volumes (influxdb-data gone → all sensor history lost)
+docker compose -f docker-compose.prod.yml down -v
+
+# Clear retained MQTT messages (mosquitto has no volume in prod, so a recreate
+# drops them; -v above already removed containers). Then bring everything back:
+docker compose -f docker-compose.prod.yml up -d
+```
+
+If you want to keep InfluxDB history but clear only the retained MQTT control state (blocked topics, automation enabled toggles), restart just mosquitto instead of `down -v`:
+
+```bash
+docker compose -f docker-compose.prod.yml restart mosquitto
+```
+Automation enabled-state then falls back to each rule's `enabled` field in `automations/<slug>/config.ts`, and the adapter un-blocks all topics until the dashboard re-publishes blocks on the next DELETE.
 
 ---
 

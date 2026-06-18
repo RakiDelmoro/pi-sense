@@ -9,15 +9,21 @@ Manage automation rules for Pi Sense. The user describes a trigger condition and
 
 ## Architecture
 
-The automation service is a separate container that subscribes to the same MQTT broker as the dashboard. It discovers and loads rules at startup.
+The automation service is a separate container that subscribes to the same MQTT broker as the dashboard and adapter. It discovers and loads rules at startup.
 
 ```
-Sensors → MQTT ──→ Dashboard (writes to InfluxDB)
-                └→ Automation service (evaluates rules, fires actions)
+Sensors → MQTT ──→ Adapter (parses, writes InfluxDB, publishes pi-sense/updates/<topic>)
+                                                          │
+                                ┌─────────────────────────┴─────────────────────────┐
+                                ▼                                                   ▼
+                          Dashboard                                        Automation service
+                          (on update notification,                    (on update notification,
+                           queries InfluxDB,                             queries InfluxDB,
+                           pushes to browsers)                           evaluates rules, fires actions)
 ```
 
-- **MQTT is the only signal source.** No InfluxDB queries, no HTTP polling.
-- **Rules are stateless.** Each MQTT message is evaluated independently. If a rule needs "sustained for N seconds" logic, the rule itself tracks that with timers.
+- **InfluxDB is the only source of truth.** The automation service never sees raw MQTT payloads. It reacts to `pi-sense/updates/<topic>` notifications published by the adapter after each DB write, then queries InfluxDB for the authoritative value before evaluating rules.
+- **Rules are stateless per evaluation.** Each DB-update notification is evaluated independently against the latest DB value. If a rule needs "sustained for N seconds" logic, the rule itself tracks that with timers.
 - **Actions are outbound.** Hue lights, webhooks, notifications — anything that produces an external side-effect.
 
 ## When to use
@@ -39,7 +45,7 @@ Automation rules are automatically discovered. The automation service scans `aut
 
 ## MQTT topic convention
 
-All sensor topics **must start with `sensors/`** — matching the dashboard convention. Rules subscribe to specific topics or `sensors/#` for catch-all.
+Sensor topics are whatever the sensor configs declare (the adapter subscribes to the topics listed in `sensors/*/config.ts`). A rule's `topic` field must match a real sensor's topic so that `pi-sense/updates/<topic>` notifications route to it. See the existing sensors in `sensors/*/config.ts` for the topics in use.
 
 ## Modes
 
@@ -103,7 +109,7 @@ import type { AutomationConfig } from '../../src/automation/types';
 export const config: AutomationConfig = {
   slug: '<slug>',
   label: '<Label>',
-  topic: '<topic>',            // MQTT topic to subscribe to (e.g. 'sensors/temperature')
+  topic: '<topic>',            // sensor topic to react to (e.g. 'esp/water-level')
   enabled: true,
 };
 ```
@@ -118,10 +124,10 @@ const rule: AutomationRule = {
   ...config,
 
   evaluate(ctx: AutomationContext) {
-    // ctx.value  — the numeric value from the MQTT payload
-    // ctx.topic  — the MQTT topic
-    // ctx.raw    — the raw MQTT payload string
-    // ctx.timestamp — ISO timestamp of the message
+    // ctx.value     — the numeric value from InfluxDB (the only source of truth)
+    // ctx.topic     — the sensor topic this rule is subscribed to
+    // ctx.raw       — string form of the DB value (NOT the raw MQTT payload)
+    // ctx.timestamp — ISO timestamp of the DB point
 
     // Return an action to fire, or null/undefined to do nothing
     return null;
@@ -259,8 +265,8 @@ Examples:
 
 These are non-negotiable.
 
-1. **Only subscribe to `sensors/` topics.** The automation service subscribes to `sensors/#`. Rules must use topics matching this prefix.
-2. **Never import from the dashboard server.** The automation service is a standalone container. It shares types via `src/automation/types.ts` but has no runtime dependency on `server.ts` or any dashboard code.
+1. **Rules declare a `topic`, they don't subscribe.** The automation service subscribes to `pi-sense/updates/#` and routes each DB-update notification to rules whose `topic` matches. A rule's `topic` must match a real sensor's topic (see `sensors/*/config.ts`).
+2. **The automation service depends on `src/influx/influx.ts`.** It queries InfluxDB for the authoritative value on every notification (shared module, not dashboard-specific code). Rules themselves must not import dashboard server code — they only use `src/automation/types.ts` and return action objects.
 3. **Keep rules stateless where possible.** Only use module-level state (timers, flags) when the rule genuinely needs it (sustained conditions, hysteresis). Prefer simple threshold evaluations.
 4. **Return actions, don't execute them.** Rules return `ActionResult` objects. The automation service handles the actual Hue API calls, webhook dispatch, etc. This keeps rules testable and side-effect-free.
 5. **Scope any module-level state to the rule.** Since each rule is its own module, timers and flags are naturally scoped. Never share state between rules.

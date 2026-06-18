@@ -1,12 +1,13 @@
-import type { AutomationConfig } from '../../automation/types';
-import { publish } from '../bridge/mqtt';
+import type { AutomationConfig } from '../automation/types';
+import { publish } from '../mqtt/mqtt';
+import { getAutomationEnabled, setAutomationEnabledState } from './automation-state';
 
 interface AutomationMeta extends AutomationConfig {
   // always present normalized type
 }
 
 function configPath(slug: string): string {
-  return `${import.meta.dir}/../../../automations/${slug}/config.ts`;
+  return `${import.meta.dir}/../../automations/${slug}/config.ts`;
 }
 
 function extractField(text: string, field: string): string | undefined {
@@ -35,8 +36,7 @@ async function parseConfig(slug: string): Promise<AutomationMeta | null> {
   const description = extractField(text, 'description');
   const enabled = extractBoolField(text, 'enabled');
 
-  const { getAutomationEnabled: getRuntimeEnabled } = await import('../bridge/mqtt');
-  const runtimeEnabled = getRuntimeEnabled(slug);
+  const runtimeEnabled = getAutomationEnabled(slug);
 
   return {
     slug,
@@ -52,7 +52,7 @@ async function parseConfig(slug: string): Promise<AutomationMeta | null> {
 export async function getAutomations(): Promise<AutomationMeta[]> {
   const pattern = 'automations/*/config.ts';
   const glob = new Bun.Glob(pattern);
-  const entries = [...glob.scanSync({ cwd: import.meta.dir + '/../../..' })].sort();
+  const entries = [...glob.scanSync({ cwd: import.meta.dir + '/../..' })].sort();
 
   const results: AutomationMeta[] = [];
   for (const entry of entries) {
@@ -73,7 +73,5 @@ export async function setAutomationEnabled(slug: string, enabled: boolean): Prom
     retain: true,
   });
   // Optimistically update local state so the dashboard UI reflects immediately.
-  import('../bridge/mqtt').then(({ setAutomationEnabled: setLocal }) => {
-    setLocal(slug, enabled);
-  });
+  setAutomationEnabledState(slug, enabled);
 }

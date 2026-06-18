@@ -10,7 +10,7 @@ RUN bun install --frozen-lockfile
 # Copy source and sensor definitions
 COPY src/ src/
 COPY sensors/ sensors/
-COPY server.ts index.html tsconfig.json ./
+COPY index.html tsconfig.json ./
 
 # Generate sensor registry and build frontend bundle
 RUN bun -e " \
@@ -23,21 +23,21 @@ RUN bun -e " \
     const slug = entry.match(/sensors\/([^/]+)\/sensor\\.tsx/)?.[1]; \
     if (!slug) continue; \
     const varName = slug.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase()); \
-    imports.push('import ' + varName + \" from '../\" + entry.replace(/\\.tsx$/, '') + \"';\"); \
-    imports.push('import { config as ' + varName + \"Config } from '../sensors/\" + slug + \"/config';\"); \
+    imports.push('import ' + varName + \" from '../../../\" + entry.replace(/\\.tsx$/, '') + \"';\"); \
+    imports.push('import { config as ' + varName + \"Config } from '../../../sensors/\" + slug + \"/config';\"); \
     items.push(\"  { slug: '\" + slug + \"', Component: \" + varName + \", config: \" + varName + 'Config },'); \
   } \
   const content = '// Auto-generated — do not edit\\n' + \
     imports.join('\\n') + '\\n\\n' + \
     'import type { FunctionalComponent } from \"preact\";\\n' + \
-    'import type { SensorConfig } from \"./types/sensor\";\\n\\n' + \
+    'import type { SensorConfig } from \"../types/sensor\";\\n\\n' + \
     'export interface SensorEntry { slug: string; Component: FunctionalComponent; config: SensorConfig; }\\n\\n' + \
     'const sensorRegistry: SensorEntry[] = [\\n' + items.join('\\n') + '\\n];\\n\\nexport default sensorRegistry;\\n'; \
-  await Bun.write(ROOT + '/src/sensor-registry.ts', content); \
+  await Bun.write(ROOT + '/src/dashboard/generated/sensor-registry.ts', content); \
   console.log('Generated registry: ' + entries.length + ' sensor(s)'); \
 "
 
-RUN bun build src/index.tsx --outdir /app/dist --target browser
+RUN bun build src/dashboard/index.tsx --outdir /app/dist --target browser
 
 # ── Stage 2: Run ───────────────────────────────────────────────
 FROM oven/bun:1.3-slim
@@ -48,10 +48,10 @@ WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile --production
 
-# Copy server, static assets, sensor configs, and automation configs
-COPY server.ts index.html ./
-COPY src/server/ src/server/
-COPY src/types/ src/types/
+# Copy the full source tree (dashboard server + frontend bundle source,
+# mqtt client, influx queries, automation types), static assets, and configs
+COPY index.html ./
+COPY src/ src/
 COPY --from=build /app/dist/ /app/dist/
 COPY sensors/ sensors/
 COPY automations/ automations/
@@ -63,4 +63,4 @@ USER app
 
 EXPOSE 3141
 
-CMD ["bun", "server.ts"]
+CMD ["bun", "src/dashboard/server.ts"]

@@ -7,9 +7,9 @@ WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile
 
-# Copy source and automation definitions
+# Copy source and sensor definition (sensor configs drive ingest metadata)
 COPY src/ src/
-COPY automations/ automations/
+COPY sensors/ sensors/
 COPY tsconfig.json ./
 
 # ── Stage 2: Run ───────────────────────────────────────────────
@@ -21,17 +21,15 @@ WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile --production
 
-# Copy server source, types, and automation rules
-# Copy the automation entrypoint + runner, the InfluxDB query service it
-# now depends on (rules read authoritative values from the DB), and the
-# shared sensor-topic metadata that influx.ts imports.
-COPY src/automation/ src/automation/
+# Copy the adapter entrypoint, ingest loop, shared MQTT client + topic
+# metadata, and InfluxDB write API. Sensor configs drive ingest metadata.
+COPY src/adapter/ src/adapter/
+COPY src/mqtt/ src/mqtt/
 COPY src/influx/ src/influx/
-COPY src/mqtt/sensor-topics.ts src/mqtt/sensor-topics.ts
-COPY automations/ automations/
+COPY sensors/ sensors/
 
 # Run as non-root user for security
 RUN groupadd -r app && useradd -r -g app app
 USER app
 
-CMD ["bun", "src/automation/automation.ts"]
+CMD ["bun", "src/adapter/adapter.ts"]

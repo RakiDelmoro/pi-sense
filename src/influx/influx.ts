@@ -1,4 +1,5 @@
 import { InfluxDB } from '@influxdata/influxdb-client';
+import { topicTimeOffsetKeys } from '../mqtt/sensor-topics';
 
 // Lazy init — env vars are read after server.ts CRLF sanitizer runs
 let _influx: InfluxDB | null = null;
@@ -31,11 +32,6 @@ export function getWriteApi() {
 }
 
 export function getInfluxBucket() { return (process.env.INFLUX_BUCKET || 'pi-sense').trim(); }
-
-// Per-topic metadata maps
-export const topicValueKeys = new Map<string, string>();
-export const topicTimeOffsetKeys = new Map<string, string>();
-export const blockedTopics = new Set<string>();
 
 /** Validate topic name — only alphanumeric, hyphens, underscores, forward slashes */
 export function isValidTopic(topic: string): boolean {
