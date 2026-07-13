@@ -122,14 +122,11 @@ body {
 
 /* Center-align the two top gauges side-by-side on desktop views */
 @media (min-width: 992px) {
-  /* Water Volume sits inside center-left columns (3,4,5,6) */
-  .sensor-water-volume {
-    grid-column: 3 / span 4;
-  }
-  
-  /* Water Tank sits inside center-right columns (7,8,9,10) */
-  .sensor-water-tank {
-    grid-column: 7 / span 4;
+  /* Water cards share one row across the 12-column grid */
+  .sensor-water-volume,
+  .sensor-water-tank,
+  .sensor-clean-water-tank {
+    grid-column: span 4;
   }
 }
 
