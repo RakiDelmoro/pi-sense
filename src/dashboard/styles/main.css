@@ -90,8 +90,8 @@ body {
 
 .sensor-grid {
   display: grid;
-  grid-template-columns: repeat(12, 1fr); /* Elegant 12-column template layout */
-  grid-auto-flow: dense; /* Support clean side-by-side layout regardless of registry order */
+  grid-template-columns: repeat(12, 1fr);
+  grid-auto-flow: dense;
   gap: 16px;
   align-items: start;
   width: 100%;
@@ -120,9 +120,8 @@ body {
   color: #ef4444;
 }
 
-/* Center-align the two top gauges side-by-side on desktop views */
+/* Desktop: water cards share one row across the 12-column grid */
 @media (min-width: 992px) {
-  /* Water cards share one row across the 12-column grid */
   .sensor-water-volume,
   .sensor-water-tank,
   .sensor-clean-water-tank {
@@ -130,15 +129,32 @@ body {
   }
 }
 
+/* Tablet: switch to a single column earlier so cards don't get squashed */
+@media (max-width: 900px) {
+  .dashboard-content {
+    padding: 24px 20px 24px 224px;
+  }
+
+  .sensor-card,
+  .sensor-card--wide {
+    grid-column: span 12;
+  }
+
+  .sensor-water-volume,
+  .sensor-water-tank,
+  .sensor-clean-water-tank {
+    grid-column: span 12;
+  }
+}
+
+/* Mobile: sidebar moves to the top, cards stack */
 @media (max-width: 768px) {
   .dashboard-content {
     flex-direction: column;
     padding: 16px 12px;
   }
 
-  .sensor-card {
-    grid-column: span 12;
-  }
+  .sensor-card,
   .sensor-card--wide {
     grid-column: span 12;
   }
