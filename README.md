@@ -1,4 +1,4 @@
-<div align="center">
+ <div align="center">
   <img src="public/gen-logo.png" width="300" />
 
   <br />
@@ -118,9 +118,15 @@ Then check the automation container output to see if the rule fired.
 
 *Ship it — configure real credentials, build the Docker image, and deploy anywhere. No project directory needed in production.*
 
-### 1. Build images
+### 1. Configure
 
-Images are generic — no configuration is baked in. All config lives in `docker-compose.prod.yml` and is injected at runtime. Only mosquitto needs `--build-arg` (it hashes passwords at build time).
+Edit `docker-compose.prod.yml` — fill in every line marked with `# ⚠️ set before deploying`.
+
+Do this **first**. The MQTT credentials you enter here are also passed to the mosquitto build in the next step, so they must be decided before that image is built.
+
+### 2. Build images
+
+Images are generic — no configuration is baked in. All config lives in `docker-compose.prod.yml` and is injected at runtime. Only mosquitto needs `--build-arg` (it hashes passwords at build time), and those values must match `MQTT_USERNAME` / `MQTT_PASSWORD` in `docker-compose.prod.yml`.
 
 **Dashboard (web + server):**
 
@@ -163,10 +169,6 @@ docker buildx build --platform linux/arm64 `
   -t pi-sense-automation:latest `
   -f Dockerfile.automation --load .
 ```
-
-### 2. Configure
-
-Edit `docker-compose.prod.yml` — fill in every line marked with `# ⚠️ set before deploying`.
 
 ### 3. Run the stack
 
